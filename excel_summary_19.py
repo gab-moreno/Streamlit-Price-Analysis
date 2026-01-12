@@ -32,15 +32,12 @@ st.title("📊 Interactive Table Review & Price Analysis")
 st.subheader("📄 Upload 3 Quote PDFs (Power Automate)")
 
 pdfs = st.file_uploader(
-    "Upload exactly 3 PDF quotes",
+    "Upload 1 or more PDF quotes",
     type=["pdf"],
     accept_multiple_files=True
 )
 
-if pdfs and len(pdfs) != 3:
-    st.warning("Please upload exactly 3 PDF files.")
-
-if pdfs and len(pdfs) == 3:
+if pdfs:  # at least one file uploaded
     if st.button("🚀 Process PDFs via Power Automate"):
         with st.spinner("Sending PDFs to Power Automate…"):
 
@@ -75,9 +72,10 @@ if pdfs and len(pdfs) == 3:
         st.session_state.current_job_path = None
         st.session_state.job_loaded_from_queue = False
 
-        st.success("✅ CSV generated from PDFs and loaded")
+        st.success(f"✅ CSV generated from {len(pdfs)} PDF(s) and loaded")
         st.rerun()
-
+else:
+    st.info("Upload 1 or more PDFs to start processing")
 
 # -------------------------------------------------
 # UPLOAD FILE (MANUAL OVERRIDE)
@@ -408,4 +406,3 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
-
