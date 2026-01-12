@@ -43,7 +43,7 @@ if pdfs:  # at least one file uploaded
 
             files_payload = []
             for pdf in pdfs:
-                encoded = base64.b64encode(pdf.read()).decode("utf-8")
+                encoded = base64.b64encode(pdf.read()).decode("ascii")
                 files_payload.append({
                     "name": pdf.name,
                     "content": encoded
@@ -406,3 +406,4 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
