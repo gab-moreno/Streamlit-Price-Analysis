@@ -1,3 +1,5 @@
+import requests
+import base64
 import streamlit as st
 import pandas as pd
 from openpyxl import Workbook
@@ -6,7 +8,11 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime
 import io
 
+
+
 st.set_page_config(layout="wide")
+
+POWER_AUTOMATE_URL = st.secrets["power_automate"]["url"]
 
 # -------------------------------------------------
 # SESSION STATE
@@ -19,10 +25,67 @@ if "df" not in st.session_state:
 # -------------------------------------------------
 st.title("📊 Interactive Table Review & Price Analysis")
 
+
 # -------------------------------------------------
-# UPLOAD FILE
+# PDF UPLOAD → POWER AUTOMATE (HIGHEST PRIORITY)
 # -------------------------------------------------
-uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+st.subheader("📄 Upload 3 Quote PDFs (Power Automate)")
+
+pdfs = st.file_uploader(
+    "Upload exactly 3 PDF quotes",
+    type=["pdf"],
+    accept_multiple_files=True
+)
+
+if pdfs and len(pdfs) != 3:
+    st.warning("Please upload exactly 3 PDF files.")
+
+if pdfs and len(pdfs) == 3:
+    if st.button("🚀 Process PDFs via Power Automate"):
+        with st.spinner("Sending PDFs to Power Automate…"):
+
+            files_payload = []
+            for pdf in pdfs:
+                encoded = base64.b64encode(pdf.read()).decode("utf-8")
+                files_payload.append({
+                    "name": pdf.name,
+                    "content": encoded
+                })
+
+            response = requests.post(
+                POWER_AUTOMATE_URL,
+                json={"files": files_payload},
+                timeout=180
+            )
+
+        if response.status_code != 200:
+            st.error("Power Automate failed to process PDFs")
+            st.stop()
+
+        # Expecting base64 CSV back
+        csv_bytes = base64.b64decode(response.json()["csv"])
+        df = pd.read_csv(io.BytesIO(csv_bytes))
+
+        # 🔑 HANDOFF POINT — everything else already works
+        for col in ["type", "supplier", "brand", "code", "description", "Power Type"]:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+
+        st.session_state.df = df
+        st.session_state.current_job_path = None
+        st.session_state.job_loaded_from_queue = False
+
+        st.success("✅ CSV generated from PDFs and loaded")
+        st.rerun()
+
+
+# -------------------------------------------------
+# UPLOAD FILE (MANUAL OVERRIDE)
+# -------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload CSV or Excel (manual override)",
+    type=["csv", "xlsx"]
+)
 
 if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
@@ -34,7 +97,14 @@ if uploaded_file:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
+    # 🔹 Override queue state
     st.session_state.df = df.copy()
+    st.session_state.current_job_path = None
+    st.session_state.job_loaded_from_queue = False
+
+    st.success("📤 Manual file loaded (queue overridden)")
+
+
 
 # -------------------------------------------------
 # EDIT SOURCE TABLE
@@ -203,7 +273,6 @@ if (
 else:
     st.info("⬆️ Upload or generate data to see the price analysis preview.")
 
-
 # -------------------------------------------------
 # GENERATE FINAL EXCEL (PROVEN FORMATTING)
 # -------------------------------------------------
@@ -339,3 +408,4 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
