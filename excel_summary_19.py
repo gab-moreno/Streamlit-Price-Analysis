@@ -52,6 +52,9 @@ if pdfs:  # at least one file uploaded
             response = requests.post(
                 POWER_AUTOMATE_URL,
                 json={"files": files_payload},
+                headers={
+                    "Content-Type": "application/json"
+                },
                 timeout=180
             )
 
@@ -406,4 +409,5 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
