@@ -287,7 +287,7 @@ else:
     st.info("⬆️ Upload or generate data to see the price analysis preview.")
 
 # -------------------------------------------------
-# GENERATE FINAL EXCEL (PROVEN FORMATTING)
+# GENERATE FINAL EXCEL (MINIMALIST FORMATTING)
 # -------------------------------------------------
 st.subheader("📥 Generate Final Excel")
 
@@ -297,20 +297,30 @@ if st.button("Generate Excel File"):
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Items Summary"
+    ws.title = "Price Analysis"
+    ws.sheet_view.showGridLines = False  # Clean minimalist look
+    
+    # --- MINIMALIST DESIGN TOKENS ---
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill, numbers
+    
+    HEADER_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    WINNER_BG = PatternFill(start_color="F2FAF2", end_color="F2FAF2", fill_type="solid")
+    SUBTLE_BORDER = Border(bottom=Side(style='thin', color="E5E5E5"))
+    TEXT_PRIMARY = "1D1D1F"
+    TEXT_SECONDARY = "86868B"
 
-    header_fill = PatternFill(start_color="DAE9F8", end_color="DAE9F8", fill_type="solid")
-    total_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
-    thin_side = Side(border_style="thin", color="000000")
+    current_row = 3  # Start with breathing room
 
-    start_row_offset = 1
-    start_col_offset = 1
-    current_row = 1
+    main_items = df[
+        (df["type"] == "item") & 
+        df["Power Type"].notna() & 
+        (df["Power Type"] != "")
+    ]
 
-    main_items = df[(df["type"] == "item") & df["Power Type"].notna() & (df["Power Type"] != "")]
-
-    for code, power_type in main_items[["code", "Power Type"]].drop_duplicates().values:
-
+    for opt_idx, (code, power_type) in enumerate(
+        main_items[["code", "Power Type"]].drop_duplicates().values, 1
+    ):
+        # Get all items for this code/power type combination
         items_for_code = df[
             (df["code"] == code) &
             (
@@ -321,98 +331,195 @@ if st.button("Generate Excel File"):
             (df["type"].isin(["item", "subitem"]))
         ]
 
-        suppliers = items_for_code["supplier"].unique()
+        suppliers = list(items_for_code["supplier"].unique())
         brand = items_for_code[items_for_code["type"] == "item"].iloc[0]["brand"]
-        descriptions = items_for_code["description"].unique()
+        descriptions = list(items_for_code["description"].unique())
 
-        start_row = current_row
-        data_row = start_row + 1
+        # --- DETERMINE WINNER (LOWEST TOTAL PRICE) ---
+        winner_supplier = ""
+        min_total = float('inf')
+        for sup in suppliers:
+            sup_items = items_for_code[items_for_code["supplier"] == sup]
+            total = sup_items["price"].sum() * (1 + tax_rate)
+            if total < min_total:
+                min_total = total
+                winner_supplier = sup
 
-        ws.cell(row=start_row + start_row_offset, column=1 + start_col_offset, value="Details")
-        ws.cell(row=start_row + start_row_offset, column=3 + start_col_offset, value="Image")
-        ws.cell(row=start_row + start_row_offset, column=4 + start_col_offset, value="QTY")
-        ws.cell(row=start_row + start_row_offset, column=5 + start_col_offset, value="Items")
+        # === 1. OPTION TITLE ===
+        title_cell = ws.cell(row=current_row - 1, column=2, value=f"Option {opt_idx:02d}")
+        title_cell.font = Font(name='Arial', bold=True, size=14, color=TEXT_PRIMARY)
 
-        for i, supplier in enumerate(suppliers):
-            ws.cell(
-                row=start_row + start_row_offset,
-                column=6 + i + start_col_offset,
-                value=supplier
+        # === 2. HEADER ROW ===
+        header_row = current_row
+        ws.row_dimensions[header_row].height = 28
+
+        headers = ["DETAILS", "IMAGE", "QTY", "LINE ITEM"] + suppliers
+        for i, h in enumerate(headers):
+            col_idx = i + 2
+            cell = ws.cell(row=header_row, column=col_idx, value=h.upper())
+            cell.font = Font(name='Arial', size=8, bold=True, color=TEXT_SECONDARY)
+            cell.fill = WINNER_BG if h == winner_supplier else HEADER_BG
+            cell.alignment = Alignment(
+                horizontal="left" if col_idx <= 5 else "right",
+                vertical="center"
             )
+            cell.border = SUBTLE_BORDER
 
-        last_header_col = 5 + len(suppliers) + start_col_offset
-        for col in range(1 + start_col_offset, last_header_col + 1):
-            ws.cell(row=start_row + start_row_offset, column=col).fill = header_fill
+        # === 3. CONTENT ROWS ===
+        start_data_row = header_row + 1
+        num_body_rows = len(descriptions) + 1  # +1 for tax row
 
-        ws.cell(row=data_row + start_row_offset, column=1 + start_col_offset, value="Brand")
-        ws.cell(row=data_row + start_row_offset, column=2 + start_col_offset, value=brand)
+        # DETAILS column (merged)
+        detail_val = f"BRAND\n{brand}\n\nCODE\n{code}\n\nPOWER\n{power_type}"
+        d_cell = ws.cell(row=start_data_row, column=2, value=detail_val)
+        d_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+        d_cell.font = Font(name='Arial', size=8, color=TEXT_SECONDARY)
+        ws.merge_cells(
+            start_row=start_data_row,
+            start_column=2,
+            end_row=start_data_row + num_body_rows,
+            end_column=2
+        )
 
-        ws.cell(row=data_row + 1 + start_row_offset, column=1 + start_col_offset, value="Code")
-        ws.cell(row=data_row + 1 + start_row_offset, column=2 + start_col_offset, value=code)
+        # IMAGE placeholder (merged)
+        img_cell = ws.cell(row=start_data_row, column=3, value="[ PHOTO ]")
+        img_cell.alignment = Alignment(horizontal="center", vertical="center")
+        img_cell.font = Font(name='Arial', size=7, color="CCCCCC", italic=True)
+        ws.merge_cells(
+            start_row=start_data_row,
+            start_column=3,
+            end_row=start_data_row + num_body_rows,
+            end_column=3
+        )
 
-        ws.cell(row=data_row + 2 + start_row_offset, column=1 + start_col_offset, value="Power Type")
-        ws.cell(row=data_row + 2 + start_row_offset, column=2 + start_col_offset, value=power_type)
+        # ITEM ROWS
+        for idx, desc in enumerate(descriptions):
+            r_num = start_data_row + idx
+            ws.row_dimensions[r_num].height = 32
 
-        for i_desc, desc in enumerate(descriptions):
-            row = data_row + i_desc + start_row_offset
-            ws.cell(row=row, column=4 + start_col_offset, value=1)
-            ws.cell(row=row, column=5 + start_col_offset, value=desc)
+            # QTY column
+            qty_cell = ws.cell(row=r_num, column=4, value=1)
+            qty_cell.alignment = Alignment(horizontal="center", vertical="center")
+            qty_cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
 
-            qty_letter = get_column_letter(4 + start_col_offset)
+            # LINE ITEM (description)
+            desc_cell = ws.cell(row=r_num, column=5, value=desc)
+            desc_cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
+            desc_cell.alignment = Alignment(vertical="center")
 
-            for i, supplier in enumerate(suppliers):
-                col_idx = 6 + i + start_col_offset
+            # SUPPLIER PRICES (with formulas tied to QTY)
+            qty_letter = get_column_letter(4)
+            for s_idx, sup in enumerate(suppliers):
+                col = 6 + s_idx
+
+                # Get price for this supplier/description combo
                 price_row = items_for_code[
-                    (items_for_code["supplier"] == supplier) &
+                    (items_for_code["supplier"] == sup) &
                     (items_for_code["description"] == desc)
                 ]
                 price = float(price_row["price"].iloc[0]) if not price_row.empty else 0
-                ws.cell(row=row, column=col_idx, value=f"={qty_letter}{row}*{price}")
-                ws.cell(row=row, column=col_idx).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
 
-        extra_rows = 2 if "subitem" not in items_for_code["type"].values else 0
+                # Formula: =QTY * price
+                cell = ws.cell(row=r_num, column=col, value=f"={qty_letter}{r_num}*{price}")
+                cell.number_format = '#,##0.00'
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                cell.border = SUBTLE_BORDER
+                cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
 
-        tax_row = data_row + len(descriptions) + extra_rows + start_row_offset
-        ws.cell(row=tax_row, column=5 + start_col_offset, value="Tax")
+                if sup == winner_supplier:
+                    cell.fill = WINNER_BG
 
-        for i in range(len(suppliers)):
-            col_idx = 6 + i + start_col_offset
-            ws.cell(row=tax_row, column=col_idx, value=tax_rate)
-            ws.cell(row=tax_row, column=col_idx).number_format = numbers.FORMAT_PERCENTAGE_00
+        # === 4. TAX ROW ===
+        tax_row = start_data_row + len(descriptions)
+        ws.row_dimensions[tax_row].height = 28
 
-        total_row = tax_row + 1
-        ws.cell(row=total_row, column=5 + start_col_offset, value="Total").fill = total_fill
+        tax_label = ws.cell(row=tax_row, column=5, value=f"Tax ({int(tax_rate*100)}%)")
+        tax_label.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
+        tax_label.alignment = Alignment(vertical="center")
 
-        first_item_row = data_row + start_row_offset
-        last_item_row = tax_row - 1
+        for s_idx, sup in enumerate(suppliers):
+            col = 6 + s_idx
+            col_letter = get_column_letter(col)
 
-        for i in range(len(suppliers)):
-            col_idx = 6 + i + start_col_offset
-            col_letter = get_column_letter(col_idx)
-            ws.cell(
-                row=total_row,
-                column=col_idx,
-                value=f"=SUM({col_letter}{first_item_row}:{col_letter}{last_item_row})*(1+{col_letter}{tax_row})"
+            # Tax formula: SUM(items) * tax_rate
+            t_cell = ws.cell(
+                row=tax_row,
+                column=col,
+                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{tax_row-1})*{tax_rate}"
             )
-            ws.cell(row=total_row, column=col_idx).number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-            ws.cell(row=total_row, column=col_idx).fill = total_fill
+            t_cell.number_format = '#,##0.00'
+            t_cell.alignment = Alignment(horizontal="right", vertical="center")
+            t_cell.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
+            t_cell.border = SUBTLE_BORDER
 
-        first_row = start_row + start_row_offset
-        last_row = total_row
-        first_col = 1 + start_col_offset
-        last_col = 5 + len(suppliers) + start_col_offset
+            if sup == winner_supplier:
+                t_cell.fill = WINNER_BG
 
-        for r in range(first_row, last_row + 1):
-            for c in range(first_col, last_col + 1):
-                ws.cell(row=r, column=c).border = Border(
-                    top=thin_side if r == first_row else None,
-                    bottom=thin_side if r == last_row else None,
-                    left=thin_side if c == first_col else None,
-                    right=thin_side if c == last_col else None,
-                )
+        # === 5. TOTAL ROW ===
+        total_row = tax_row + 1
+        ws.row_dimensions[total_row].height = 40
 
-        current_row = total_row + 3
+        total_label = ws.cell(row=total_row, column=5, value="Total")
+        total_label.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
+        total_label.alignment = Alignment(vertical="center")
 
+        for s_idx, sup in enumerate(suppliers):
+            col = 6 + s_idx
+            col_letter = get_column_letter(col)
+
+            # Total formula: SUM(items + tax)
+            tot_cell = ws.cell(
+                row=total_row,
+                column=col,
+                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{tax_row})"
+            )
+            tot_cell.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
+            tot_cell.number_format = '#,##0.00'
+            tot_cell.alignment = Alignment(horizontal="right", vertical="center")
+            tot_cell.border = Border(bottom=Side(style='medium', color="E5E5E5"))
+
+            if sup == winner_supplier:
+                tot_cell.fill = WINNER_BG
+
+        # === 6. SPECS & DESCRIPTION BLOCK ===
+        specs_row = total_row + 1
+        ws.row_dimensions[specs_row].height = 60
+
+        specs_label = ws.cell(row=specs_row, column=4, value="SPECS & DESCRIPTION")
+        specs_label.font = Font(name='Arial', size=8, bold=True, color=TEXT_SECONDARY)
+        specs_label.alignment = Alignment(vertical="top")
+
+        specs_content = ws.cell(
+            row=specs_row,
+            column=5,
+            value="Enter item specifications, dimensions, and technical details here..."
+        )
+        specs_content.font = Font(name='Arial', size=9, color=TEXT_SECONDARY, italic=True)
+        specs_content.alignment = Alignment(wrap_text=True, vertical="top")
+
+        # Merge across all supplier columns
+        last_col = 5 + len(suppliers)
+        ws.merge_cells(
+            start_row=specs_row,
+            start_column=5,
+            end_row=specs_row,
+            end_column=last_col
+        )
+        specs_content.border = Border(bottom=Side(style='thin', color="F2F2F2"))
+
+        # Move to next table (with spacing)
+        current_row = specs_row + 4
+
+    # === COLUMN WIDTH ADJUSTMENTS ===
+    ws.column_dimensions['B'].width = 16  # Details
+    ws.column_dimensions['C'].width = 14  # Image
+    ws.column_dimensions['D'].width = 8   # QTY
+    ws.column_dimensions['E'].width = 30  # Line Item
+
+    for i in range(len(suppliers)):
+        ws.column_dimensions[get_column_letter(6+i)].width = 16
+
+    # Save to downloadable file
     output = io.BytesIO()
     wb.save(output)
 
@@ -421,7 +528,3 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
-
-
-
-
