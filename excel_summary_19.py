@@ -71,7 +71,7 @@ if pdfs:  # at least one file uploaded
             if col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
 
-st.session_state.df = df
+        st.session_state.df = df
         st.session_state.current_job_path = None
         st.session_state.job_loaded_from_queue = False
         
@@ -421,6 +421,7 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
 
