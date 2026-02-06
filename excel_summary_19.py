@@ -71,14 +71,26 @@ if pdfs:  # at least one file uploaded
             if col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
 
-        st.session_state.df = df
+st.session_state.df = df
         st.session_state.current_job_path = None
         st.session_state.job_loaded_from_queue = False
+        
+        # 🔥 Store CSV bytes for download
+        st.session_state.csv_bytes = csv_bytes
 
         st.success(f"✅ CSV generated from {len(pdfs)} PDF(s) and loaded")
         st.rerun()
 else:
     st.info("Upload 1 or more PDFs to start processing")
+
+# 🔥 AUTO-DOWNLOAD CSV BUTTON (appears after processing)
+if "csv_bytes" in st.session_state and st.session_state.csv_bytes is not None:
+    st.download_button(
+        label="📥 Download Raw CSV",
+        data=st.session_state.csv_bytes,
+        file_name=f"quotes_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
 
 # -------------------------------------------------
 # UPLOAD FILE (MANUAL OVERRIDE)
@@ -409,5 +421,6 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
