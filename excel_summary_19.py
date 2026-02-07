@@ -310,6 +310,10 @@ if st.button("Generate Excel File"):
     TEXT_SECONDARY = "86868B"
 
     current_row = 3  # Start with breathing room
+    
+    # === SINGLE OPTION TITLE AT TOP ===
+    title_cell = ws.cell(row=1, column=2, value="Option 01")
+    title_cell.font = Font(name='Arial', bold=True, size=14, color=TEXT_PRIMARY)
 
     main_items = df[
         (df["type"] == "item") & 
@@ -345,9 +349,6 @@ if st.button("Generate Excel File"):
                 min_total = total
                 winner_supplier = sup
 
-        # === 1. OPTION TITLE ===
-        title_cell = ws.cell(row=current_row - 1, column=2, value=f"Option {opt_idx:02d}")
-        title_cell.font = Font(name='Arial', bold=True, size=14, color=TEXT_PRIMARY)
 
         # === 2. HEADER ROW ===
         header_row = current_row
@@ -429,8 +430,34 @@ if st.button("Generate Excel File"):
                 if sup == winner_supplier:
                     cell.fill = WINNER_BG
 
-        # === 4. TAX ROW ===
-        tax_row = start_data_row + len(descriptions)
+# === 4. SUBTOTAL ROW ===
+        subtotal_row = start_data_row + len(descriptions)
+        ws.row_dimensions[subtotal_row].height = 28
+
+        subtotal_label = ws.cell(row=subtotal_row, column=5, value="Subtotal")
+        subtotal_label.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
+        subtotal_label.alignment = Alignment(vertical="center")
+
+        for s_idx, sup in enumerate(suppliers):
+            col = 6 + s_idx
+            col_letter = get_column_letter(col)
+
+            # Subtotal formula: SUM(items)
+            st_cell = ws.cell(
+                row=subtotal_row,
+                column=col,
+                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{subtotal_row-1})"
+            )
+            st_cell.number_format = '#,##0.00'
+            st_cell.alignment = Alignment(horizontal="right", vertical="center")
+            st_cell.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
+            st_cell.border = SUBTLE_BORDER
+
+            if sup == winner_supplier:
+                st_cell.fill = WINNER_BG
+
+        # === 5. TAX ROW ===
+        tax_row = subtotal_row + 1
         ws.row_dimensions[tax_row].height = 28
 
         tax_label = ws.cell(row=tax_row, column=5, value=f"Tax ({int(tax_rate*100)}%)")
@@ -441,11 +468,11 @@ if st.button("Generate Excel File"):
             col = 6 + s_idx
             col_letter = get_column_letter(col)
 
-            # Tax formula: SUM(items) * tax_rate
+            # Tax formula: Subtotal * tax_rate
             t_cell = ws.cell(
                 row=tax_row,
                 column=col,
-                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{tax_row-1})*{tax_rate}"
+                value=f"={col_letter}{subtotal_row}*{tax_rate}"
             )
             t_cell.number_format = '#,##0.00'
             t_cell.alignment = Alignment(horizontal="right", vertical="center")
@@ -455,7 +482,7 @@ if st.button("Generate Excel File"):
             if sup == winner_supplier:
                 t_cell.fill = WINNER_BG
 
-        # === 5. TOTAL ROW ===
+        # === 6. TOTAL ROW ===
         total_row = tax_row + 1
         ws.row_dimensions[total_row].height = 40
 
@@ -467,11 +494,11 @@ if st.button("Generate Excel File"):
             col = 6 + s_idx
             col_letter = get_column_letter(col)
 
-            # Total formula: SUM(items + tax)
+            # Total formula: Subtotal + Tax
             tot_cell = ws.cell(
                 row=total_row,
                 column=col,
-                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{tax_row})"
+                value=f"={col_letter}{subtotal_row}+{col_letter}{tax_row}"
             )
             tot_cell.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
             tot_cell.number_format = '#,##0.00'
@@ -480,6 +507,7 @@ if st.button("Generate Excel File"):
 
             if sup == winner_supplier:
                 tot_cell.fill = WINNER_BG
+
 
         # === 6. SPECS & DESCRIPTION BLOCK ===
         specs_row = total_row + 1
@@ -528,3 +556,4 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
