@@ -360,10 +360,15 @@ if st.button("Generate Excel File"):
             cell = ws.cell(row=header_row, column=col_idx, value=h.upper())
             cell.font = Font(name='Arial', size=8, bold=True, color=TEXT_SECONDARY)
             cell.fill = WINNER_BG if h == winner_supplier else HEADER_BG
-            cell.alignment = Alignment(
-                horizontal="left" if col_idx <= 5 else "right",
-                vertical="center"
-            )
+            
+            # Center supplier columns, left-align others
+            if col_idx >= 6:  # Supplier columns
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                cell.alignment = Alignment(
+                    horizontal="left" if col_idx <= 5 else "right",
+                    vertical="center"
+                )
             cell.border = SUBTLE_BORDER
 
         # === 3. CONTENT ROWS ===
@@ -422,7 +427,7 @@ if st.button("Generate Excel File"):
 
                 # Formula: =QTY * price
                 cell = ws.cell(row=r_num, column=col, value=f"={qty_letter}{r_num}*{price}")
-                cell.number_format = '#,##0.00'
+                cell.number_format = '$#,##0.00'
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.border = SUBTLE_BORDER
                 cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
@@ -556,6 +561,7 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
 
