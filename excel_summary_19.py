@@ -430,31 +430,31 @@ if st.button("Generate Excel File"):
                 if sup == winner_supplier:
                     cell.fill = WINNER_BG
 
-# === 4. SUBTOTAL ROW ===
-        subtotal_row = start_data_row + len(descriptions)
-        ws.row_dimensions[subtotal_row].height = 28
+# === 4. TOTAL BEFORE TAX ROW ===
+        total_before_tax_row = start_data_row + len(descriptions)
+        ws.row_dimensions[total_before_tax_row].height = 28
 
-        subtotal_label = ws.cell(row=subtotal_row, column=5, value="Subtotal")
-        subtotal_label.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
-        subtotal_label.alignment = Alignment(vertical="center")
+        total_before_tax_label = ws.cell(row=total_before_tax_row, column=5, value="Total Before Tax")
+        total_before_tax_label.font = Font(name='Arial', size=9, bold=True, color=TEXT_PRIMARY)
+        total_before_tax_label.alignment = Alignment(vertical="center")
 
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
             col_letter = get_column_letter(col)
 
-            # Subtotal formula: SUM(items)
-            st_cell = ws.cell(
-                row=subtotal_row,
+            # Total Before Tax formula: SUM(items)
+            tbt_cell = ws.cell(
+                row=total_before_tax_row,
                 column=col,
-                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{subtotal_row-1})"
+                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{total_before_tax_row-1})"
             )
-            st_cell.number_format = '#,##0.00'
-            st_cell.alignment = Alignment(horizontal="right", vertical="center")
-            st_cell.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
-            st_cell.border = SUBTLE_BORDER
+            tbt_cell.number_format = '#,##0.00'
+            tbt_cell.alignment = Alignment(horizontal="right", vertical="center")
+            tbt_cell.font = Font(name='Arial', size=9, bold=True, color=TEXT_PRIMARY)
+            tbt_cell.border = SUBTLE_BORDER
 
             if sup == winner_supplier:
-                st_cell.fill = WINNER_BG
+                tbt_cell.fill = WINNER_BG
 
         # === 5. TAX ROW ===
         tax_row = subtotal_row + 1
@@ -556,4 +556,5 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
