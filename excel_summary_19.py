@@ -472,7 +472,7 @@ if st.button("Generate Excel File"):
             t_cell = ws.cell(
                 row=tax_row,
                 column=col,
-                value=f"={col_letter}{subtotal_row}*{tax_rate}"
+                value=f"={col_letter}{total_before_tax_row}*{tax_rate}"
             )
             t_cell.number_format = '#,##0.00'
             t_cell.alignment = Alignment(horizontal="right", vertical="center")
@@ -556,6 +556,7 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
 
