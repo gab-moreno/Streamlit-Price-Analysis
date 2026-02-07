@@ -453,7 +453,7 @@ if st.button("Generate Excel File"):
                 column=col,
                 value=f"=SUM({col_letter}{start_data_row}:{col_letter}{total_before_tax_row-1})"
             )
-            tbt_cell.number_format = '#,##0.00'
+            tbt_cell.number_format = '$#,##0.00'
             tbt_cell.alignment = Alignment(horizontal="right", vertical="center")
             tbt_cell.font = Font(name='Arial', size=9, bold=True, color=TEXT_PRIMARY)
             tbt_cell.border = SUBTLE_BORDER
@@ -479,7 +479,7 @@ if st.button("Generate Excel File"):
                 column=col,
                 value=f"={col_letter}{total_before_tax_row}*{tax_rate}"
             )
-            t_cell.number_format = '#,##0.00'
+            t_cell.number_format = '$#,##0.00'
             t_cell.alignment = Alignment(horizontal="right", vertical="center")
             t_cell.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
             t_cell.border = SUBTLE_BORDER
@@ -506,7 +506,7 @@ if st.button("Generate Excel File"):
                 value=f"={col_letter}{total_before_tax_row}+{col_letter}{tax_row}"
             )
             tot_cell.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
-            tot_cell.number_format = '#,##0.00'
+            tot_cell.number_format = '$#,##0.00'
             tot_cell.alignment = Alignment(horizontal="right", vertical="center")
             tot_cell.border = Border(bottom=Side(style='medium', color="E5E5E5"))
 
@@ -561,6 +561,7 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
 
