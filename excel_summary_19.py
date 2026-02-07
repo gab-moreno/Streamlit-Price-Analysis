@@ -457,7 +457,7 @@ if st.button("Generate Excel File"):
                 tbt_cell.fill = WINNER_BG
 
         # === 5. TAX ROW ===
-        tax_row = subtotal_row + 1
+        tax_row = total_before_tax_row + 1
         ws.row_dimensions[tax_row].height = 28
 
         tax_label = ws.cell(row=tax_row, column=5, value=f"Tax ({int(tax_rate*100)}%)")
@@ -556,5 +556,6 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
