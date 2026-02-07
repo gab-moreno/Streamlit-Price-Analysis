@@ -368,7 +368,7 @@ if st.button("Generate Excel File"):
 
         # === 3. CONTENT ROWS ===
         start_data_row = header_row + 1
-        num_body_rows = len(descriptions) + 1  # +1 for tax row
+        num_body_rows = len(descriptions) + 3  # +3 for total before tax, tax, and total rows
 
         # DETAILS column (merged)
         detail_val = f"BRAND\n{brand}\n\nCODE\n{code}\n\nPOWER\n{power_type}"
@@ -498,7 +498,7 @@ if st.button("Generate Excel File"):
             tot_cell = ws.cell(
                 row=total_row,
                 column=col,
-                value=f"={col_letter}{subtotal_row}+{col_letter}{tax_row}"
+                value=f"={col_letter}{total_before_tax_row}+{col_letter}{tax_row}"
             )
             tot_cell.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
             tot_cell.number_format = '#,##0.00'
@@ -556,6 +556,7 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
 
