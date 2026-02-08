@@ -537,7 +537,7 @@ if st.button("Generate Excel File"):
         # === 6. FINAL TOTAL ROW ===
         total_row = tax_row + 1
         ws.row_dimensions[total_row].height = 40
-
+        
         # Merge DETAILS, IMAGE, QTY, and LINE ITEM columns (leave empty)
         ws.merge_cells(
             start_row=total_row,
@@ -616,3 +616,4 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"price_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
