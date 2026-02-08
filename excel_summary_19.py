@@ -395,7 +395,7 @@ if st.button("Generate Excel File"):
         num_item_rows = len(descriptions)
         num_body_rows = num_item_rows + 3  # +3 for total before tax, tax, and total rows
 
-        # DETAILS column (merged vertically)
+        # DETAILS column (merged vertically) - STOP BEFORE TOTAL ROW
         detail_val = f"BRAND\n{brand}\n\nCODE\n{code}\n\nPOWER\n{power_type}"
         d_cell = ws.cell(row=start_data_row, column=2, value=detail_val)
         d_cell.alignment = Alignment(
@@ -409,11 +409,11 @@ if st.button("Generate Excel File"):
         ws.merge_cells(
             start_row=start_data_row,
             start_column=2,
-            end_row=start_data_row + num_body_rows - 1,
+            end_row=start_data_row + num_item_rows + 1,  # Only through tax row
             end_column=2
         )
-
-        # IMAGE placeholder (merged vertically)
+        
+        # IMAGE placeholder (merged vertically) - STOP BEFORE TOTAL ROW
         img_cell = ws.cell(row=start_data_row, column=3, value="[ PHOTO ]")
         img_cell.alignment = Alignment(horizontal="center", vertical="center")
         img_cell.font = Font(name='Segoe UI', size=10, color="CCCCCC", italic=True)
@@ -421,7 +421,7 @@ if st.button("Generate Excel File"):
         ws.merge_cells(
             start_row=start_data_row,
             start_column=3,
-            end_row=start_data_row + num_body_rows - 1,
+            end_row=start_data_row + num_item_rows + 1,  # Only through tax row
             end_column=3
         )
 
@@ -616,4 +616,5 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"price_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
