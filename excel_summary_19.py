@@ -287,7 +287,7 @@ else:
     st.info("⬆️ Upload or generate data to see the price analysis preview.")
 
 # -------------------------------------------------
-# GENERATE FINAL EXCEL (MINIMALIST FORMATTING)
+# GENERATE FINAL EXCEL (MINIMALIST FORMATTING - RFQ STYLE)
 # -------------------------------------------------
 st.subheader("📥 Generate Final Excel")
 
@@ -300,20 +300,27 @@ if st.button("Generate Excel File"):
     ws.title = "Price Analysis"
     ws.sheet_view.showGridLines = False  # Clean minimalist look
     
-    # --- MINIMALIST DESIGN TOKENS ---
-    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill, numbers
+    # --- MINIMALIST DESIGN TOKENS (MATCHING RFQ STYLE) ---
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     
-    HEADER_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    # Color palette matching RFQ Details
+    HEADER_BLUE = PatternFill(start_color="288AD6", end_color="288AD6", fill_type="solid")
+    DETAILS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    COLUMN_HEADER_BG = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
     WINNER_BG = PatternFill(start_color="F2FAF2", end_color="F2FAF2", fill_type="solid")
-    SUBTLE_BORDER = Border(bottom=Side(style='thin', color="E5E5E5"))
+    SPECS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
+    
+    # Border styles
+    SUBTLE_BORDER = Border(bottom=Side(style='thin', color="F0F0F0"))
+    COLUMN_HEADER_BORDER = Border(bottom=Side(style='medium', color="E5E5E5"))
+    TOTAL_BORDER = Border(top=Side(style='medium', color="288AD6"))
+    
+    # Text colors
     TEXT_PRIMARY = "1D1D1F"
     TEXT_SECONDARY = "86868B"
+    WHITE = "FFFFFF"
 
-    current_row = 3  # Start with breathing room
-    
-    # === SINGLE OPTION TITLE AT TOP ===
-    title_cell = ws.cell(row=1, column=2, value="Option 01")
-    title_cell.font = Font(name='Arial', bold=True, size=14, color=TEXT_PRIMARY)
+    current_row = 1
 
     main_items = df[
         (df["type"] == "item") & 
@@ -349,52 +356,72 @@ if st.button("Generate Excel File"):
                 min_total = total
                 winner_supplier = sup
 
+        # === 1. OPTION TITLE (BLUE HEADER) ===
+        title_row = current_row
+        ws.row_dimensions[title_row].height = 40
+        
+        # Merge across all columns
+        last_col = 6 + len(suppliers) - 1
+        ws.merge_cells(
+            start_row=title_row,
+            start_column=2,
+            end_row=title_row,
+            end_column=last_col
+        )
+        
+        title_cell = ws.cell(row=title_row, column=2, value=f"Option {opt_idx:02d}")
+        title_cell.font = Font(name='Segoe UI', bold=True, size=14, color=WHITE)
+        title_cell.fill = HEADER_BLUE
+        title_cell.alignment = Alignment(horizontal="left", vertical="center", indent=2)
 
-        # === 2. HEADER ROW ===
-        header_row = current_row
+        # === 2. COLUMN HEADERS ===
+        header_row = title_row + 1
         ws.row_dimensions[header_row].height = 28
 
         headers = ["DETAILS", "IMAGE", "QTY", "LINE ITEM"] + suppliers
         for i, h in enumerate(headers):
             col_idx = i + 2
             cell = ws.cell(row=header_row, column=col_idx, value=h.upper())
-            cell.font = Font(name='Arial', size=8, bold=True, color=TEXT_SECONDARY)
-            cell.fill = WINNER_BG if h == winner_supplier else HEADER_BG
-            
-            # Center supplier columns, left-align others
-            if col_idx >= 6:  # Supplier columns
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-            else:
-                cell.alignment = Alignment(
-                    horizontal="left" if col_idx <= 5 else "right",
-                    vertical="center"
-                )
-            cell.border = SUBTLE_BORDER
+            cell.font = Font(name='Segoe UI', size=9, bold=True, color=TEXT_SECONDARY)
+            cell.fill = WINNER_BG if h == winner_supplier else COLUMN_HEADER_BG
+            cell.alignment = Alignment(
+                horizontal="center" if col_idx >= 6 else "left",
+                vertical="center"
+            )
+            cell.border = COLUMN_HEADER_BORDER
 
         # === 3. CONTENT ROWS ===
         start_data_row = header_row + 1
-        num_body_rows = len(descriptions) + 3  # +3 for total before tax, tax, and total rows
+        num_item_rows = len(descriptions)
+        num_body_rows = num_item_rows + 3  # +3 for total before tax, tax, and total rows
 
-        # DETAILS column (merged)
+        # DETAILS column (merged vertically)
         detail_val = f"BRAND\n{brand}\n\nCODE\n{code}\n\nPOWER\n{power_type}"
         d_cell = ws.cell(row=start_data_row, column=2, value=detail_val)
-        d_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
-        d_cell.font = Font(name='Arial', size=8, color=TEXT_SECONDARY)
+        d_cell.alignment = Alignment(
+            wrap_text=True, 
+            vertical="top", 
+            horizontal="left",
+            indent=1
+        )
+        d_cell.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
+        d_cell.fill = DETAILS_BG
         ws.merge_cells(
             start_row=start_data_row,
             start_column=2,
-            end_row=start_data_row + num_body_rows,
+            end_row=start_data_row + num_body_rows - 1,
             end_column=2
         )
 
-        # IMAGE placeholder (merged)
+        # IMAGE placeholder (merged vertically)
         img_cell = ws.cell(row=start_data_row, column=3, value="[ PHOTO ]")
         img_cell.alignment = Alignment(horizontal="center", vertical="center")
-        img_cell.font = Font(name='Arial', size=7, color="CCCCCC", italic=True)
+        img_cell.font = Font(name='Segoe UI', size=10, color="CCCCCC", italic=True)
+        img_cell.fill = DETAILS_BG
         ws.merge_cells(
             start_row=start_data_row,
             start_column=3,
-            end_row=start_data_row + num_body_rows,
+            end_row=start_data_row + num_body_rows - 1,
             end_column=3
         )
 
@@ -406,12 +433,14 @@ if st.button("Generate Excel File"):
             # QTY column
             qty_cell = ws.cell(row=r_num, column=4, value=1)
             qty_cell.alignment = Alignment(horizontal="center", vertical="center")
-            qty_cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
+            qty_cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY, bold=True)
+            qty_cell.border = SUBTLE_BORDER
 
             # LINE ITEM (description)
             desc_cell = ws.cell(row=r_num, column=5, value=desc)
-            desc_cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
-            desc_cell.alignment = Alignment(vertical="center")
+            desc_cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY)
+            desc_cell.alignment = Alignment(vertical="center", horizontal="left")
+            desc_cell.border = SUBTLE_BORDER
 
             # SUPPLIER PRICES (with formulas tied to QTY)
             qty_letter = get_column_letter(4)
@@ -430,18 +459,27 @@ if st.button("Generate Excel File"):
                 cell.number_format = '$#,##0.00'
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.border = SUBTLE_BORDER
-                cell.font = Font(name='Arial', size=10, color=TEXT_PRIMARY)
+                cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY)
 
                 if sup == winner_supplier:
                     cell.fill = WINNER_BG
 
-# === 4. TOTAL BEFORE TAX ROW ===
-        total_before_tax_row = start_data_row + len(descriptions)
-        ws.row_dimensions[total_before_tax_row].height = 28
+        # === 4. TOTAL BEFORE TAX ROW ===
+        total_before_tax_row = start_data_row + num_item_rows
+        ws.row_dimensions[total_before_tax_row].height = 32
 
-        total_before_tax_label = ws.cell(row=total_before_tax_row, column=5, value="Total Before Tax")
-        total_before_tax_label.font = Font(name='Arial', size=9, bold=True, color=TEXT_PRIMARY)
-        total_before_tax_label.alignment = Alignment(vertical="center")
+        # Merge QTY and LINE ITEM columns for label
+        ws.merge_cells(
+            start_row=total_before_tax_row,
+            start_column=4,
+            end_row=total_before_tax_row,
+            end_column=5
+        )
+        
+        total_before_tax_label = ws.cell(row=total_before_tax_row, column=4, value="Total Before Tax")
+        total_before_tax_label.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
+        total_before_tax_label.alignment = Alignment(vertical="center", horizontal="left")
+        total_before_tax_label.border = SUBTLE_BORDER
 
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
@@ -455,7 +493,7 @@ if st.button("Generate Excel File"):
             )
             tbt_cell.number_format = '$#,##0.00'
             tbt_cell.alignment = Alignment(horizontal="right", vertical="center")
-            tbt_cell.font = Font(name='Arial', size=9, bold=True, color=TEXT_PRIMARY)
+            tbt_cell.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
             tbt_cell.border = SUBTLE_BORDER
 
             if sup == winner_supplier:
@@ -465,9 +503,18 @@ if st.button("Generate Excel File"):
         tax_row = total_before_tax_row + 1
         ws.row_dimensions[tax_row].height = 28
 
-        tax_label = ws.cell(row=tax_row, column=5, value=f"Tax ({int(tax_rate*100)}%)")
-        tax_label.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
-        tax_label.alignment = Alignment(vertical="center")
+        # Merge QTY and LINE ITEM columns for label
+        ws.merge_cells(
+            start_row=tax_row,
+            start_column=4,
+            end_row=tax_row,
+            end_column=5
+        )
+        
+        tax_label = ws.cell(row=tax_row, column=4, value=f"Tax ({int(tax_rate*100)}%)")
+        tax_label.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
+        tax_label.alignment = Alignment(vertical="center", horizontal="left")
+        tax_label.border = SUBTLE_BORDER
 
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
@@ -481,19 +528,26 @@ if st.button("Generate Excel File"):
             )
             t_cell.number_format = '$#,##0.00'
             t_cell.alignment = Alignment(horizontal="right", vertical="center")
-            t_cell.font = Font(name='Arial', size=9, color=TEXT_SECONDARY)
+            t_cell.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
             t_cell.border = SUBTLE_BORDER
 
             if sup == winner_supplier:
                 t_cell.fill = WINNER_BG
 
-        # === 6. TOTAL ROW ===
+        # === 6. FINAL TOTAL ROW ===
         total_row = tax_row + 1
         ws.row_dimensions[total_row].height = 40
 
-        total_label = ws.cell(row=total_row, column=5, value="Total")
-        total_label.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
-        total_label.alignment = Alignment(vertical="center")
+        # Merge DETAILS, IMAGE, QTY, and LINE ITEM columns (leave empty)
+        ws.merge_cells(
+            start_row=total_row,
+            start_column=2,
+            end_row=total_row,
+            end_column=5
+        )
+        empty_cell = ws.cell(row=total_row, column=2, value="")
+        empty_cell.fill = DETAILS_BG
+        empty_cell.border = TOTAL_BORDER
 
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
@@ -505,49 +559,50 @@ if st.button("Generate Excel File"):
                 column=col,
                 value=f"={col_letter}{total_before_tax_row}+{col_letter}{tax_row}"
             )
-            tot_cell.font = Font(name='Arial', bold=True, size=11, color=TEXT_PRIMARY)
+            tot_cell.font = Font(name='Segoe UI', bold=True, size=13, color=TEXT_PRIMARY)
             tot_cell.number_format = '$#,##0.00'
             tot_cell.alignment = Alignment(horizontal="right", vertical="center")
-            tot_cell.border = Border(bottom=Side(style='medium', color="E5E5E5"))
+            tot_cell.border = TOTAL_BORDER
 
             if sup == winner_supplier:
                 tot_cell.fill = WINNER_BG
 
-
-        # === 6. SPECS & DESCRIPTION BLOCK ===
+        # === 7. SPECS & DESCRIPTION BLOCK ===
         specs_row = total_row + 1
         ws.row_dimensions[specs_row].height = 60
 
-        specs_label = ws.cell(row=specs_row, column=4, value="SPECS & DESCRIPTION")
-        specs_label.font = Font(name='Arial', size=8, bold=True, color=TEXT_SECONDARY)
-        specs_label.alignment = Alignment(vertical="top")
-
-        specs_content = ws.cell(
-            row=specs_row,
-            column=5,
-            value="Enter item specifications, dimensions, and technical details here..."
-        )
-        specs_content.font = Font(name='Arial', size=9, color=TEXT_SECONDARY, italic=True)
-        specs_content.alignment = Alignment(wrap_text=True, vertical="top")
-
-        # Merge across all supplier columns
-        last_col = 5 + len(suppliers)
+        # Merge across all columns
         ws.merge_cells(
             start_row=specs_row,
-            start_column=5,
+            start_column=2,
             end_row=specs_row,
             end_column=last_col
         )
-        specs_content.border = Border(bottom=Side(style='thin', color="F2F2F2"))
+
+        specs_content = ws.cell(
+            row=specs_row,
+            column=2,
+            value="SPECS & DESCRIPTION\n\nEnter item specifications, dimensions, and technical details here..."
+        )
+        specs_content.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
+        specs_content.alignment = Alignment(
+            wrap_text=True, 
+            vertical="top",
+            horizontal="left",
+            indent=2
+        )
+        specs_content.fill = SPECS_BG
+        specs_content.border = Border(bottom=Side(style='thin', color="F0F0F0"))
 
         # Move to next table (with spacing)
-        current_row = specs_row + 4
+        current_row = specs_row + 3
 
     # === COLUMN WIDTH ADJUSTMENTS ===
-    ws.column_dimensions['B'].width = 16  # Details
-    ws.column_dimensions['C'].width = 14  # Image
+    ws.column_dimensions['A'].width = 2   # Left margin
+    ws.column_dimensions['B'].width = 18  # Details
+    ws.column_dimensions['C'].width = 12  # Image
     ws.column_dimensions['D'].width = 8   # QTY
-    ws.column_dimensions['E'].width = 30  # Line Item
+    ws.column_dimensions['E'].width = 35  # Line Item
 
     for i in range(len(suppliers)):
         ws.column_dimensions[get_column_letter(6+i)].width = 16
@@ -559,12 +614,5 @@ if st.button("Generate Excel File"):
     st.download_button(
         "Download Excel",
         data=output.getvalue(),
-        file_name=f"output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_name=f"price_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
-
-
-
-
-
-
-
