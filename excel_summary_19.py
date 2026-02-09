@@ -55,7 +55,7 @@ if pdfs:  # at least one file uploaded
                 headers={
                     "Content-Type": "application/json"
                 },
-                timeout=180
+                timeout=600
             )
 
         if response.status_code != 200:
@@ -616,5 +616,6 @@ if st.button("Generate Excel File"):
         data=output.getvalue(),
         file_name=f"price_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
+
 
 
