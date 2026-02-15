@@ -8,44 +8,32 @@ app = Flask(__name__)
 
 @app.route("/generate", methods=["POST"])
 def generate():
+    raw_data = request.get_data(force=True)
+    print(f"Content-Type: {request.content_type}")
+    print(f"Raw data length: {len(raw_data)}")
+    print(f"Raw data preview: {raw_data[:200]}")
 
-    if not request.data:
+    if not raw_data:
         return jsonify({"error": "No file uploaded"}), 400
 
     try:
-
         file_bytes = None
-
-        # Try parsing as JSON first
         try:
-            body = json.loads(request.data)
-
+            body = json.loads(raw_data)
             if isinstance(body, dict) and "$content" in body:
                 file_bytes = base64.b64decode(body["$content"])
-
         except Exception:
             pass
 
-        # If not JSON, assume raw binary
         if file_bytes is None:
-            file_bytes = request.data
+            file_bytes = raw_data
 
         file_stream = io.BytesIO(file_bytes)
-
         df = pd.read_csv(file_stream)
-
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    # Example analysis
     df['Total'] = df['qty'] * df['cost']
-
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Analysis')
-
-    output.seek(0)
 
     return send_file(
         output,
