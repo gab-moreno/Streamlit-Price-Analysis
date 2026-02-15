@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    raw_data = request.get_data(force=True)
+    raw_data = request.get_data()
     print(f"Content-Type: {request.content_type}")
     print(f"Raw data length: {len(raw_data)}")
     print(f"Raw data preview: {raw_data[:200]}")
@@ -33,7 +33,11 @@ def generate():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    df['Total'] = df['qty'] * df['cost']
+    # Just convert to Excel as-is (add your real analysis later)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Analysis')
+    output.seek(0)
 
     return send_file(
         output,
