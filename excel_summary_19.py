@@ -1,5 +1,3 @@
-import requests
-import base64
 import streamlit as st
 import pandas as pd
 from openpyxl import Workbook
@@ -12,8 +10,6 @@ import io
 
 st.set_page_config(layout="wide")
 
-POWER_AUTOMATE_URL = st.secrets["power_automate"]["url"]
-
 # -------------------------------------------------
 # SESSION STATE
 # -------------------------------------------------
@@ -23,99 +19,25 @@ if "df" not in st.session_state:
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
-st.title("📊 Interactive Table Review & Price Analysis")
-
-
-# -------------------------------------------------
-# PDF UPLOAD → POWER AUTOMATE (HIGHEST PRIORITY)
-# -------------------------------------------------
-st.subheader("📄 Upload 3 Quote PDFs (Power Automate)")
-
-pdfs = st.file_uploader(
-    "Upload 1 or more PDF quotes",
-    type=["pdf"],
-    accept_multiple_files=True
-)
-
-if pdfs:  # at least one file uploaded
-    if st.button("🚀 Process PDFs via Power Automate"):
-        with st.spinner("Sending PDFs to Power Automate…"):
-
-            files_payload = []
-            for pdf in pdfs:
-                encoded = base64.b64encode(pdf.read()).decode("ascii")
-                files_payload.append({
-                    "name": pdf.name,
-                    "content": encoded
-                })
-
-            response = requests.post(
-                POWER_AUTOMATE_URL,
-                json={"files": files_payload},
-                headers={
-                    "Content-Type": "application/json"
-                },
-                timeout=600
-            )
-
-        if response.status_code != 200:
-            st.error("Power Automate failed to process PDFs")
-            st.stop()
-
-        # Expecting base64 CSV back
-        csv_bytes = base64.b64decode(response.json()["csv"])
-        df = pd.read_csv(io.BytesIO(csv_bytes))
-
-        # 🔑 HANDOFF POINT — everything else already works
-        for col in ["type", "supplier", "brand", "code", "description", "Power Type"]:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip()
-
-        st.session_state.df = df
-        st.session_state.current_job_path = None
-        st.session_state.job_loaded_from_queue = False
-        
-        # 🔥 Store CSV bytes for download
-        st.session_state.csv_bytes = csv_bytes
-
-        st.success(f"✅ CSV generated from {len(pdfs)} PDF(s) and loaded")
-        st.rerun()
-else:
-    st.info("Upload 1 or more PDFs to start processing")
-
-# 🔥 AUTO-DOWNLOAD CSV BUTTON (appears after processing)
-if "csv_bytes" in st.session_state and st.session_state.csv_bytes is not None:
-    st.download_button(
-        label="📥 Download Raw CSV",
-        data=st.session_state.csv_bytes,
-        file_name=f"quotes_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
-    )
+st.title("📊 CSV to Excel Price Analysis")
 
 # -------------------------------------------------
-# UPLOAD FILE (MANUAL OVERRIDE)
+# UPLOAD CSV
 # -------------------------------------------------
 uploaded_file = st.file_uploader(
-    "Upload CSV or Excel (manual override)",
-    type=["csv", "xlsx"]
+    "Upload CSV",
+    type=["csv"]
 )
 
 if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+    df = pd.read_csv(uploaded_file)
 
     for col in ["type", "supplier", "brand", "code", "description", "Power Type"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
-    # 🔹 Override queue state
     st.session_state.df = df.copy()
-    st.session_state.current_job_path = None
-    st.session_state.job_loaded_from_queue = False
-
-    st.success("📤 Manual file loaded (queue overridden)")
+    st.success("📤 CSV loaded")
 
 
 
