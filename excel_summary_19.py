@@ -19,7 +19,7 @@ if "df" not in st.session_state:
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
-st.title("📊 CSV to Excel Price Analysis")
+st.title("CSV to Excel Price Analysis")
 
 # -------------------------------------------------
 # UPLOAD CSV
@@ -37,7 +37,7 @@ if uploaded_file:
             df[col] = df[col].astype(str).str.strip()
 
     st.session_state.df = df.copy()
-    st.success("📤 CSV loaded")
+    st.success("CSV loaded")
 
 
 
@@ -45,7 +45,7 @@ if uploaded_file:
 # EDIT SOURCE TABLE
 # -------------------------------------------------
 if st.session_state.df is not None:
-    st.subheader("✏️ Review Source Table")
+    st.subheader("Review Source Table")
     st.session_state.df = st.data_editor(
         st.session_state.df,
         use_container_width=True,
@@ -55,13 +55,13 @@ if st.session_state.df is not None:
 # -------------------------------------------------
 # TAX INPUT
 # -------------------------------------------------
-st.subheader("💲 Tax Settings")
+st.subheader("Tax Settings")
 tax_percent = st.number_input("Tax Percentage", min_value=0.0, value=12.0)
 
 # -------------------------------------------------
 # HTML PREVIEW (EXCEL-STYLE)
 # -------------------------------------------------
-st.subheader("👀 Price Analysis Preview (HTML Table)")
+st.subheader("Price Analysis Preview (HTML Table)")
 
 def generate_html_table(df, tax_percent):
     tax_rate = tax_percent / 100
@@ -197,7 +197,7 @@ def generate_html_table(df, tax_percent):
     return html
 
 
-# 🔥 RENDER HTML (LIVE, REACTIVE)
+# RENDER HTML (LIVE, REACTIVE)
 if (
     "df" in st.session_state
     and st.session_state.df is not None
@@ -206,12 +206,12 @@ if (
     html = generate_html_table(st.session_state.df, tax_percent)
     st.markdown(html, unsafe_allow_html=True)
 else:
-    st.info("⬆️ Upload or generate data to see the price analysis preview.")
+    st.info("Upload or generate data to see the price analysis preview.")
 
 # -------------------------------------------------
 # GENERATE FINAL EXCEL (MINIMALIST FORMATTING - RFQ STYLE)
 # -------------------------------------------------
-st.subheader("📥 Generate Final Excel")
+st.subheader("Generate Final Excel")
 
 if st.button("Generate Excel File"):
     df = st.session_state.df
