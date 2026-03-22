@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, numbers, Border, Side
+from openpyxl.styles import PatternFill, numbers, Border, Side, Font, Alignment
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 import io
@@ -11,21 +11,114 @@ import io
 st.set_page_config(layout="wide")
 
 # -------------------------------------------------
+# TRANSLATIONS
+# -------------------------------------------------
+TRANSLATIONS = {
+    "en": {
+        "app_title": "CSV to Excel Price Analysis",
+        "upload_csv": "Upload CSV",
+        "csv_loaded": "CSV loaded",
+        "review_table": "Review Source Table",
+        "tax_settings": "Tax Settings",
+        "tax_percent": "Tax Percentage",
+        "preview_title": "Price Analysis Preview (HTML Table)",
+        "generate_excel_title": "Generate Final Excel",
+        "generate_excel_btn": "Generate Excel File",
+        "download_excel": "Download Excel",
+        "upload_prompt": "Upload or generate data to see the price analysis preview.",
+        "language_label": "Language",
+        "pricing_mode_label": "Pricing Mode",
+        "individual": "Individual",
+        "package": "Package",
+        "units_per_package": "Units per Package",
+        "details": "DETAILS",
+        "image": "IMAGE",
+        "qty": "QTY",
+        "line_item": "LINE ITEM",
+        "photo": "[ PHOTO ]",
+        "brand": "BRAND",
+        "code": "CODE",
+        "power": "POWER",
+        "total_before_tax": "Total Before Tax",
+        "tax_label": "Tax",
+        "total": "Total",
+        "specs_title": "SPECS & DESCRIPTION",
+        "specs_placeholder": "Enter item specifications, dimensions, and technical details here...",
+        "option": "Option",
+        "price_analysis_sheet": "Price Analysis",
+        "package_qty_note": "Prices multiplied by {} units/package",
+    },
+    "fr": {
+        "app_title": "Analyse de Prix CSV vers Excel",
+        "upload_csv": "Telecharger CSV",
+        "csv_loaded": "CSV charge",
+        "review_table": "Reviser le tableau source",
+        "tax_settings": "Parametres de taxes",
+        "tax_percent": "Pourcentage de taxe",
+        "preview_title": "Apercu de l'analyse de prix (Tableau HTML)",
+        "generate_excel_title": "Generer le fichier Excel final",
+        "generate_excel_btn": "Generer le fichier Excel",
+        "download_excel": "Telecharger Excel",
+        "upload_prompt": "Telechargez ou generez des donnees pour voir l'apercu.",
+        "language_label": "Langue",
+        "pricing_mode_label": "Mode de tarification",
+        "individual": "Individuel",
+        "package": "Forfait",
+        "units_per_package": "Unites par forfait",
+        "details": "DETAILS",
+        "image": "IMAGE",
+        "qty": "QTE",
+        "line_item": "ARTICLE",
+        "photo": "[ PHOTO ]",
+        "brand": "MARQUE",
+        "code": "CODE",
+        "power": "ALIMENTATION",
+        "total_before_tax": "Total avant taxes",
+        "tax_label": "Taxe",
+        "total": "Total",
+        "specs_title": "SPECIFICATIONS ET DESCRIPTION",
+        "specs_placeholder": "Entrez les specifications, dimensions et details techniques ici...",
+        "option": "Option",
+        "price_analysis_sheet": "Analyse de Prix",
+        "package_qty_note": "Prix multiplies par {} unites/forfait",
+    },
+}
+
+# -------------------------------------------------
 # SESSION STATE
 # -------------------------------------------------
 if "df" not in st.session_state:
     st.session_state.df = None
 
 # -------------------------------------------------
+# SIDEBAR CONFIG
+# -------------------------------------------------
+with st.sidebar:
+    lang = st.selectbox("Language / Langue", options=["en", "fr"], format_func=lambda x: "English" if x == "en" else "Francais")
+    T = TRANSLATIONS[lang]
+
+    pricing_mode = st.radio(
+        T["pricing_mode_label"],
+        options=["individual", "package"],
+        format_func=lambda x: T["individual"] if x == "individual" else T["package"]
+    )
+
+    units_per_package = 1
+    if pricing_mode == "package":
+        units_per_package = st.number_input(T["units_per_package"], min_value=1, value=1, step=1)
+
+T = TRANSLATIONS[lang]
+
+# -------------------------------------------------
 # HEADER
 # -------------------------------------------------
-st.title("CSV to Excel Price Analysis")
+st.title(T["app_title"])
 
 # -------------------------------------------------
 # UPLOAD CSV
 # -------------------------------------------------
 uploaded_file = st.file_uploader(
-    "Upload CSV",
+    T["upload_csv"],
     type=["csv"]
 )
 
@@ -37,7 +130,7 @@ if uploaded_file:
             df[col] = df[col].astype(str).str.strip()
 
     st.session_state.df = df.copy()
-    st.success("CSV loaded")
+    st.success(T["csv_loaded"])
 
 
 
@@ -45,7 +138,7 @@ if uploaded_file:
 # EDIT SOURCE TABLE
 # -------------------------------------------------
 if st.session_state.df is not None:
-    st.subheader("Review Source Table")
+    st.subheader(T["review_table"])
     st.session_state.df = st.data_editor(
         st.session_state.df,
         use_container_width=True,
@@ -55,15 +148,15 @@ if st.session_state.df is not None:
 # -------------------------------------------------
 # TAX INPUT
 # -------------------------------------------------
-st.subheader("Tax Settings")
-tax_percent = st.number_input("Tax Percentage", min_value=0.0, value=12.0)
+st.subheader(T["tax_settings"])
+tax_percent = st.number_input(T["tax_percent"], min_value=0.0, value=12.0)
 
 # -------------------------------------------------
 # HTML PREVIEW (EXCEL-STYLE)
 # -------------------------------------------------
-st.subheader("Price Analysis Preview (HTML Table)")
+st.subheader(T["preview_title"])
 
-def generate_html_table(df, tax_percent):
+def generate_html_table(df, tax_percent, T, units_per_package=1):
     tax_rate = tax_percent / 100
 
     html = """
@@ -127,7 +220,7 @@ def generate_html_table(df, tax_percent):
 
         # HEADER
         html += "<tr>"
-        html += "<th>Details</th><th></th><th>QTY</th><th>Items</th>"
+        html += f"<th>{T['details']}</th><th></th><th>{T['qty']}</th><th>{T['line_item']}</th>"
         for s in suppliers:
             html += f"<th>{s}</th>"
         html += "</tr>"
@@ -140,12 +233,12 @@ def generate_html_table(df, tax_percent):
         html += "<tr>"
         html += f"""
             <td rowspan="{body_rows}">
-                <b>Brand</b><br>{brand}<br><br>
-                <b>Code</b><br>{code}<br><br>
-                <b>Power Type</b><br>{power_type}
+                <b>{T['brand']}</b><br>{brand}<br><br>
+                <b>{T['code']}</b><br>{code}<br><br>
+                <b>{T['power']}</b><br>{power_type}
             </td>
             <td rowspan="{body_rows}"></td>
-            <td>1</td>
+            <td>{units_per_package}</td>
             <td>{first_desc}</td>
         """
 
@@ -154,7 +247,7 @@ def generate_html_table(df, tax_percent):
                 (items_for_code["supplier"] == s) &
                 (items_for_code["description"] == first_desc)
             ]
-            price = float(row["price"].iloc[0]) if not row.empty else 0
+            price = float(row["price"].iloc[0]) * units_per_package if not row.empty else 0
             totals[s] += price
             html += f"<td>${price:,.2f}</td>"
 
@@ -163,14 +256,14 @@ def generate_html_table(df, tax_percent):
         # REMAINING ITEM ROWS
         for desc in descriptions[1:]:
             html += "<tr>"
-            html += f"<td>1</td><td>{desc}</td>"
+            html += f"<td>{units_per_package}</td><td>{desc}</td>"
 
             for s in suppliers:
                 row = items_for_code[
                     (items_for_code["supplier"] == s) &
                     (items_for_code["description"] == desc)
                 ]
-                price = float(row["price"].iloc[0]) if not row.empty else 0
+                price = float(row["price"].iloc[0]) * units_per_package if not row.empty else 0
                 totals[s] += price
                 html += f"<td>${price:,.2f}</td>"
 
@@ -178,14 +271,14 @@ def generate_html_table(df, tax_percent):
 
         # TAX ROW
         html += "<tr>"
-        html += "<td></td><td><b>Tax</b></td>"
+        html += f"<td></td><td><b>{T['tax_label']}</b></td>"
         for _ in suppliers:
             html += f"<td>{tax_percent:.2f}%</td>"
         html += "</tr>"
 
         # TOTAL ROW
         html += "<tr class='total-row'>"
-        html += "<td></td><td>Total</td>"
+        html += f"<td></td><td>{T['total']}</td>"
         for s in suppliers:
             total = totals[s] * (1 + tax_rate)
             html += f"<td>${total:,.2f}</td>"
@@ -203,40 +296,39 @@ if (
     and st.session_state.df is not None
     and not st.session_state.df.empty
 ):
-    html = generate_html_table(st.session_state.df, tax_percent)
+    html = generate_html_table(st.session_state.df, tax_percent, T, units_per_package)
     st.markdown(html, unsafe_allow_html=True)
 else:
-    st.info("Upload or generate data to see the price analysis preview.")
+    st.info(T["upload_prompt"])
 
 # -------------------------------------------------
 # GENERATE FINAL EXCEL (MINIMALIST FORMATTING - RFQ STYLE)
 # -------------------------------------------------
-st.subheader("Generate Final Excel")
+st.subheader(T["generate_excel_title"])
 
-if st.button("Generate Excel File"):
+if st.button(T["generate_excel_btn"]):
     df = st.session_state.df
     tax_rate = tax_percent / 100
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Price Analysis"
+    ws.title = T["price_analysis_sheet"]
     ws.sheet_view.showGridLines = False  # Clean minimalist look
-    
+
     # --- MINIMALIST DESIGN TOKENS (MATCHING RFQ STYLE) ---
-    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-    
+
     # Color palette matching RFQ Details
     HEADER_BLUE = PatternFill(start_color="288AD6", end_color="288AD6", fill_type="solid")
     DETAILS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
     COLUMN_HEADER_BG = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
     WINNER_BG = PatternFill(start_color="F2FAF2", end_color="F2FAF2", fill_type="solid")
     SPECS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
-    
+
     # Border styles
     SUBTLE_BORDER = Border(bottom=Side(style='thin', color="F0F0F0"))
     COLUMN_HEADER_BORDER = Border(bottom=Side(style='medium', color="E5E5E5"))
     TOTAL_BORDER = Border(top=Side(style='medium', color="288AD6"))
-    
+
     # Text colors
     TEXT_PRIMARY = "1D1D1F"
     TEXT_SECONDARY = "86868B"
@@ -245,8 +337,8 @@ if st.button("Generate Excel File"):
     current_row = 1
 
     main_items = df[
-        (df["type"] == "item") & 
-        df["Power Type"].notna() & 
+        (df["type"] == "item") &
+        df["Power Type"].notna() &
         (df["Power Type"] != "")
     ]
 
@@ -273,7 +365,7 @@ if st.button("Generate Excel File"):
         min_total = float('inf')
         for sup in suppliers:
             sup_items = items_for_code[items_for_code["supplier"] == sup]
-            total = sup_items["price"].sum() * (1 + tax_rate)
+            total = sup_items["price"].sum() * units_per_package * (1 + tax_rate)
             if total < min_total:
                 min_total = total
                 winner_supplier = sup
@@ -281,7 +373,7 @@ if st.button("Generate Excel File"):
         # === 1. OPTION TITLE (BLUE HEADER) ===
         title_row = current_row
         ws.row_dimensions[title_row].height = 40
-        
+
         # Merge across all columns
         last_col = 6 + len(suppliers) - 1
         ws.merge_cells(
@@ -290,8 +382,8 @@ if st.button("Generate Excel File"):
             end_row=title_row,
             end_column=last_col
         )
-        
-        title_cell = ws.cell(row=title_row, column=2, value=f"Option {opt_idx:02d}")
+
+        title_cell = ws.cell(row=title_row, column=2, value=f"{T['option']} {opt_idx:02d}")
         title_cell.font = Font(name='Segoe UI', bold=True, size=14, color=WHITE)
         title_cell.fill = HEADER_BLUE
         title_cell.alignment = Alignment(horizontal="left", vertical="center", indent=2)
@@ -300,7 +392,7 @@ if st.button("Generate Excel File"):
         header_row = title_row + 1
         ws.row_dimensions[header_row].height = 28
 
-        headers = ["DETAILS", "IMAGE", "QTY", "LINE ITEM"] + suppliers
+        headers = [T["details"], T["image"], T["qty"], T["line_item"]] + suppliers
         for i, h in enumerate(headers):
             col_idx = i + 2
             cell = ws.cell(row=header_row, column=col_idx, value=h.upper())
@@ -318,11 +410,11 @@ if st.button("Generate Excel File"):
         num_body_rows = num_item_rows + 3  # +3 for total before tax, tax, and total rows
 
         # DETAILS column (merged vertically) - STOP BEFORE TOTAL ROW
-        detail_val = f"BRAND\n{brand}\n\nCODE\n{code}\n\nPOWER\n{power_type}"
+        detail_val = f"{T['brand']}\n{brand}\n\n{T['code']}\n{code}\n\n{T['power']}\n{power_type}"
         d_cell = ws.cell(row=start_data_row, column=2, value=detail_val)
         d_cell.alignment = Alignment(
-            wrap_text=True, 
-            vertical="top", 
+            wrap_text=True,
+            vertical="top",
             horizontal="left",
             indent=1
         )
@@ -334,9 +426,9 @@ if st.button("Generate Excel File"):
             end_row=start_data_row + num_item_rows + 1,  # Only through tax row
             end_column=2
         )
-        
+
         # IMAGE placeholder (merged vertically) - STOP BEFORE TOTAL ROW
-        img_cell = ws.cell(row=start_data_row, column=3, value="[ PHOTO ]")
+        img_cell = ws.cell(row=start_data_row, column=3, value=T["photo"])
         img_cell.alignment = Alignment(horizontal="center", vertical="center")
         img_cell.font = Font(name='Segoe UI', size=10, color="CCCCCC", italic=True)
         img_cell.fill = DETAILS_BG
@@ -353,7 +445,7 @@ if st.button("Generate Excel File"):
             ws.row_dimensions[r_num].height = 32
 
             # QTY column
-            qty_cell = ws.cell(row=r_num, column=4, value=1)
+            qty_cell = ws.cell(row=r_num, column=4, value=units_per_package)
             qty_cell.alignment = Alignment(horizontal="center", vertical="center")
             qty_cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY, bold=True)
             qty_cell.border = SUBTLE_BORDER
@@ -397,8 +489,8 @@ if st.button("Generate Excel File"):
             end_row=total_before_tax_row,
             end_column=5
         )
-        
-        total_before_tax_label = ws.cell(row=total_before_tax_row, column=4, value="Total Before Tax")
+
+        total_before_tax_label = ws.cell(row=total_before_tax_row, column=4, value=T["total_before_tax"])
         total_before_tax_label.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
         total_before_tax_label.alignment = Alignment(vertical="center", horizontal="left")
         total_before_tax_label.border = SUBTLE_BORDER
@@ -432,8 +524,8 @@ if st.button("Generate Excel File"):
             end_row=tax_row,
             end_column=5
         )
-        
-        tax_label = ws.cell(row=tax_row, column=4, value=f"Tax ({int(tax_rate*100)}%)")
+
+        tax_label = ws.cell(row=tax_row, column=4, value=f"{T['tax_label']} ({int(tax_rate*100)}%)")
         tax_label.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
         tax_label.alignment = Alignment(vertical="center", horizontal="left")
         tax_label.border = SUBTLE_BORDER
@@ -459,7 +551,7 @@ if st.button("Generate Excel File"):
         # === 6. FINAL TOTAL ROW ===
         total_row = tax_row + 1
         ws.row_dimensions[total_row].height = 40
-        
+
         # Merge DETAILS, IMAGE, QTY, and LINE ITEM columns (leave empty)
         ws.merge_cells(
             start_row=total_row,
@@ -504,11 +596,11 @@ if st.button("Generate Excel File"):
         specs_content = ws.cell(
             row=specs_row,
             column=2,
-            value="SPECS & DESCRIPTION\n\nEnter item specifications, dimensions, and technical details here..."
+            value=f"{T['specs_title']}\n\n{T['specs_placeholder']}"
         )
         specs_content.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
         specs_content.alignment = Alignment(
-            wrap_text=True, 
+            wrap_text=True,
             vertical="top",
             horizontal="left",
             indent=2
@@ -534,9 +626,7 @@ if st.button("Generate Excel File"):
     wb.save(output)
 
     st.download_button(
-        "Download Excel",
+        T["download_excel"],
         data=output.getvalue(),
         file_name=f"price_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     )
-
-
