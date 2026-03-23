@@ -26,11 +26,9 @@ TRANSLATIONS = {
         "generate_excel_btn": "Generate Excel File",
         "download_excel": "Download Excel",
         "upload_prompt": "Upload or generate data to see the price analysis preview.",
-        "language_label": "Language",
         "pricing_mode_label": "Pricing Mode",
         "individual": "Individual",
         "package": "Package",
-        "units_per_package": "Units per Package",
         "details": "DETAILS",
         "image": "IMAGE",
         "qty": "QTY",
@@ -39,6 +37,7 @@ TRANSLATIONS = {
         "brand": "BRAND",
         "code": "CODE",
         "power": "POWER",
+        "package_price": "Package Price",
         "total_before_tax": "Total Before Tax",
         "tax_label": "Tax",
         "total": "Total",
@@ -46,7 +45,6 @@ TRANSLATIONS = {
         "specs_placeholder": "Enter item specifications, dimensions, and technical details here...",
         "option": "Option",
         "price_analysis_sheet": "Price Analysis",
-        "package_qty_note": "Prices multiplied by {} units/package",
     },
     "fr": {
         "app_title": "Analyse de Prix CSV vers Excel",
@@ -60,11 +58,9 @@ TRANSLATIONS = {
         "generate_excel_btn": "Generer le fichier Excel",
         "download_excel": "Telecharger Excel",
         "upload_prompt": "Telechargez ou generez des donnees pour voir l'apercu.",
-        "language_label": "Langue",
         "pricing_mode_label": "Mode de tarification",
         "individual": "Individuel",
         "package": "Forfait",
-        "units_per_package": "Unites par forfait",
         "details": "DETAILS",
         "image": "IMAGE",
         "qty": "QTE",
@@ -73,6 +69,7 @@ TRANSLATIONS = {
         "brand": "MARQUE",
         "code": "CODE",
         "power": "ALIMENTATION",
+        "package_price": "Prix forfaitaire",
         "total_before_tax": "Total avant taxes",
         "tax_label": "Taxe",
         "total": "Total",
@@ -80,7 +77,6 @@ TRANSLATIONS = {
         "specs_placeholder": "Entrez les specifications, dimensions et details techniques ici...",
         "option": "Option",
         "price_analysis_sheet": "Analyse de Prix",
-        "package_qty_note": "Prix multiplies par {} unites/forfait",
     },
 }
 
@@ -102,10 +98,6 @@ with st.sidebar:
         options=["individual", "package"],
         format_func=lambda x: T["individual"] if x == "individual" else T["package"]
     )
-
-    units_per_package = 1
-    if pricing_mode == "package":
-        units_per_package = st.number_input(T["units_per_package"], min_value=1, value=1, step=1)
 
 T = TRANSLATIONS[lang]
 
@@ -156,7 +148,7 @@ tax_percent = st.number_input(T["tax_percent"], min_value=0.0, value=12.0)
 # -------------------------------------------------
 st.subheader(T["preview_title"])
 
-def generate_html_table(df, tax_percent, T, units_per_package=1):
+def generate_html_table(df, tax_percent, T, pricing_mode="individual"):
     tax_rate = tax_percent / 100
 
     html = """
@@ -214,7 +206,12 @@ def generate_html_table(df, tax_percent, T, units_per_package=1):
         brand = items_for_code[items_for_code["type"] == "item"].iloc[0]["brand"]
         descriptions = items_for_code["description"].unique()
 
-        body_rows = len(descriptions) + 2  # items + tax + total
+        if pricing_mode == "package":
+            # Package: descriptions + package price row + tax + total
+            body_rows = len(descriptions) + 3
+        else:
+            # Individual: descriptions + tax + total
+            body_rows = len(descriptions) + 2
 
         html += "<table>"
 
@@ -225,9 +222,19 @@ def generate_html_table(df, tax_percent, T, units_per_package=1):
             html += f"<th>{s}</th>"
         html += "</tr>"
 
-        totals = {s: 0 for s in suppliers}
+        # Compute totals (sum of all items per supplier) for both modes
+        totals = {}
+        for s in suppliers:
+            s_total = 0
+            for desc in descriptions:
+                row = items_for_code[
+                    (items_for_code["supplier"] == s) &
+                    (items_for_code["description"] == desc)
+                ]
+                s_total += float(row["price"].iloc[0]) if not row.empty else 0
+            totals[s] = s_total
 
-        # FIRST ITEM ROW (with DETAILS)
+        # FIRST ITEM ROW (with DETAILS merged cell)
         first_desc = descriptions[0]
 
         html += "<tr>"
@@ -238,35 +245,49 @@ def generate_html_table(df, tax_percent, T, units_per_package=1):
                 <b>{T['power']}</b><br>{power_type}
             </td>
             <td rowspan="{body_rows}"></td>
-            <td>{units_per_package}</td>
+            <td>1</td>
             <td>{first_desc}</td>
         """
 
-        for s in suppliers:
-            row = items_for_code[
-                (items_for_code["supplier"] == s) &
-                (items_for_code["description"] == first_desc)
-            ]
-            price = float(row["price"].iloc[0]) * units_per_package if not row.empty else 0
-            totals[s] += price
-            html += f"<td>${price:,.2f}</td>"
+        if pricing_mode == "individual":
+            for s in suppliers:
+                row = items_for_code[
+                    (items_for_code["supplier"] == s) &
+                    (items_for_code["description"] == first_desc)
+                ]
+                price = float(row["price"].iloc[0]) if not row.empty else 0
+                html += f"<td>${price:,.2f}</td>"
+        else:
+            for _ in suppliers:
+                html += "<td></td>"
 
         html += "</tr>"
 
         # REMAINING ITEM ROWS
         for desc in descriptions[1:]:
             html += "<tr>"
-            html += f"<td>{units_per_package}</td><td>{desc}</td>"
+            html += f"<td>1</td><td>{desc}</td>"
 
+            if pricing_mode == "individual":
+                for s in suppliers:
+                    row = items_for_code[
+                        (items_for_code["supplier"] == s) &
+                        (items_for_code["description"] == desc)
+                    ]
+                    price = float(row["price"].iloc[0]) if not row.empty else 0
+                    html += f"<td>${price:,.2f}</td>"
+            else:
+                for _ in suppliers:
+                    html += "<td></td>"
+
+            html += "</tr>"
+
+        # PACKAGE PRICE ROW (package mode only)
+        if pricing_mode == "package":
+            html += "<tr>"
+            html += f"<td></td><td><b>{T['package_price']}</b></td>"
             for s in suppliers:
-                row = items_for_code[
-                    (items_for_code["supplier"] == s) &
-                    (items_for_code["description"] == desc)
-                ]
-                price = float(row["price"].iloc[0]) * units_per_package if not row.empty else 0
-                totals[s] += price
-                html += f"<td>${price:,.2f}</td>"
-
+                html += f"<td>${totals[s]:,.2f}</td>"
             html += "</tr>"
 
         # TAX ROW
@@ -296,7 +317,7 @@ if (
     and st.session_state.df is not None
     and not st.session_state.df.empty
 ):
-    html = generate_html_table(st.session_state.df, tax_percent, T, units_per_package)
+    html = generate_html_table(st.session_state.df, tax_percent, T, pricing_mode)
     st.markdown(html, unsafe_allow_html=True)
 else:
     st.info(T["upload_prompt"])
@@ -313,23 +334,19 @@ if st.button(T["generate_excel_btn"]):
     wb = Workbook()
     ws = wb.active
     ws.title = T["price_analysis_sheet"]
-    ws.sheet_view.showGridLines = False  # Clean minimalist look
+    ws.sheet_view.showGridLines = False
 
-    # --- MINIMALIST DESIGN TOKENS (MATCHING RFQ STYLE) ---
-
-    # Color palette matching RFQ Details
+    # --- DESIGN TOKENS ---
     HEADER_BLUE = PatternFill(start_color="288AD6", end_color="288AD6", fill_type="solid")
     DETAILS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
     COLUMN_HEADER_BG = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
     WINNER_BG = PatternFill(start_color="F2FAF2", end_color="F2FAF2", fill_type="solid")
     SPECS_BG = PatternFill(start_color="FAFAFA", end_color="FAFAFA", fill_type="solid")
 
-    # Border styles
     SUBTLE_BORDER = Border(bottom=Side(style='thin', color="F0F0F0"))
     COLUMN_HEADER_BORDER = Border(bottom=Side(style='medium', color="E5E5E5"))
     TOTAL_BORDER = Border(top=Side(style='medium', color="288AD6"))
 
-    # Text colors
     TEXT_PRIMARY = "1D1D1F"
     TEXT_SECONDARY = "86868B"
     WHITE = "FFFFFF"
@@ -345,7 +362,6 @@ if st.button(T["generate_excel_btn"]):
     for opt_idx, (code, power_type) in enumerate(
         main_items[["code", "Power Type"]].drop_duplicates().values, 1
     ):
-        # Get all items for this code/power type combination
         items_for_code = df[
             (df["code"] == code) &
             (
@@ -360,21 +376,19 @@ if st.button(T["generate_excel_btn"]):
         brand = items_for_code[items_for_code["type"] == "item"].iloc[0]["brand"]
         descriptions = list(items_for_code["description"].unique())
 
-        # --- DETERMINE WINNER (LOWEST TOTAL PRICE) ---
-        winner_supplier = ""
-        min_total = float('inf')
+        # Compute package totals per supplier (sum of all line items)
+        package_totals = {}
         for sup in suppliers:
             sup_items = items_for_code[items_for_code["supplier"] == sup]
-            total = sup_items["price"].sum() * units_per_package * (1 + tax_rate)
-            if total < min_total:
-                min_total = total
-                winner_supplier = sup
+            package_totals[sup] = float(sup_items["price"].sum())
+
+        # --- DETERMINE WINNER (LOWEST TOTAL PRICE) ---
+        winner_supplier = min(package_totals, key=package_totals.get)
 
         # === 1. OPTION TITLE (BLUE HEADER) ===
         title_row = current_row
         ws.row_dimensions[title_row].height = 40
 
-        # Merge across all columns
         last_col = 6 + len(suppliers) - 1
         ws.merge_cells(
             start_row=title_row,
@@ -407,36 +421,29 @@ if st.button(T["generate_excel_btn"]):
         # === 3. CONTENT ROWS ===
         start_data_row = header_row + 1
         num_item_rows = len(descriptions)
-        num_body_rows = num_item_rows + 3  # +3 for total before tax, tax, and total rows
 
-        # DETAILS column (merged vertically) - STOP BEFORE TOTAL ROW
+        # DETAILS column (merged vertically through tax row)
         detail_val = f"{T['brand']}\n{brand}\n\n{T['code']}\n{code}\n\n{T['power']}\n{power_type}"
         d_cell = ws.cell(row=start_data_row, column=2, value=detail_val)
-        d_cell.alignment = Alignment(
-            wrap_text=True,
-            vertical="top",
-            horizontal="left",
-            indent=1
-        )
+        d_cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left", indent=1)
         d_cell.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
         d_cell.fill = DETAILS_BG
+
+        # Merge depth: item rows + package price row (if package) + tax row
+        merge_depth = num_item_rows + (1 if pricing_mode == "package" else 0) + 1
         ws.merge_cells(
-            start_row=start_data_row,
-            start_column=2,
-            end_row=start_data_row + num_item_rows + 1,  # Only through tax row
-            end_column=2
+            start_row=start_data_row, start_column=2,
+            end_row=start_data_row + merge_depth, end_column=2
         )
 
-        # IMAGE placeholder (merged vertically) - STOP BEFORE TOTAL ROW
+        # IMAGE placeholder (merged same depth)
         img_cell = ws.cell(row=start_data_row, column=3, value=T["photo"])
         img_cell.alignment = Alignment(horizontal="center", vertical="center")
         img_cell.font = Font(name='Segoe UI', size=10, color="CCCCCC", italic=True)
         img_cell.fill = DETAILS_BG
         ws.merge_cells(
-            start_row=start_data_row,
-            start_column=3,
-            end_row=start_data_row + num_item_rows + 1,  # Only through tax row
-            end_column=3
+            start_row=start_data_row, start_column=3,
+            end_row=start_data_row + merge_depth, end_column=3
         )
 
         # ITEM ROWS
@@ -444,107 +451,126 @@ if st.button(T["generate_excel_btn"]):
             r_num = start_data_row + idx
             ws.row_dimensions[r_num].height = 32
 
-            # QTY column
-            qty_cell = ws.cell(row=r_num, column=4, value=units_per_package)
+            qty_cell = ws.cell(row=r_num, column=4, value=1)
             qty_cell.alignment = Alignment(horizontal="center", vertical="center")
             qty_cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY, bold=True)
             qty_cell.border = SUBTLE_BORDER
 
-            # LINE ITEM (description)
             desc_cell = ws.cell(row=r_num, column=5, value=desc)
             desc_cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY)
             desc_cell.alignment = Alignment(vertical="center", horizontal="left")
             desc_cell.border = SUBTLE_BORDER
 
-            # SUPPLIER PRICES (with formulas tied to QTY)
             qty_letter = get_column_letter(4)
             for s_idx, sup in enumerate(suppliers):
                 col = 6 + s_idx
-
-                # Get price for this supplier/description combo
                 price_row = items_for_code[
                     (items_for_code["supplier"] == sup) &
                     (items_for_code["description"] == desc)
                 ]
                 price = float(price_row["price"].iloc[0]) if not price_row.empty else 0
 
-                # Formula: =QTY * price
-                cell = ws.cell(row=r_num, column=col, value=f"={qty_letter}{r_num}*{price}")
-                cell.number_format = '$#,##0.00'
+                if pricing_mode == "individual":
+                    cell = ws.cell(row=r_num, column=col, value=f"={qty_letter}{r_num}*{price}")
+                    cell.number_format = '$#,##0.00'
+                    cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY)
+                else:
+                    # Package mode: leave price cells empty
+                    cell = ws.cell(row=r_num, column=col, value="")
+                    cell.font = Font(name='Segoe UI', size=11, color=TEXT_SECONDARY)
+
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.border = SUBTLE_BORDER
-                cell.font = Font(name='Segoe UI', size=11, color=TEXT_PRIMARY)
-
                 if sup == winner_supplier:
                     cell.fill = WINNER_BG
 
-        # === 4. TOTAL BEFORE TAX ROW ===
-        total_before_tax_row = start_data_row + num_item_rows
-        ws.row_dimensions[total_before_tax_row].height = 32
+        # Current row pointer after item rows
+        next_row = start_data_row + num_item_rows
 
-        # Merge QTY and LINE ITEM columns for label
-        ws.merge_cells(
-            start_row=total_before_tax_row,
-            start_column=4,
-            end_row=total_before_tax_row,
-            end_column=5
-        )
+        # === 4a. PACKAGE PRICE ROW (package mode only) ===
+        if pricing_mode == "package":
+            pkg_row = next_row
+            ws.row_dimensions[pkg_row].height = 32
 
-        total_before_tax_label = ws.cell(row=total_before_tax_row, column=4, value=T["total_before_tax"])
-        total_before_tax_label.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
-        total_before_tax_label.alignment = Alignment(vertical="center", horizontal="left")
-        total_before_tax_label.border = SUBTLE_BORDER
-
-        for s_idx, sup in enumerate(suppliers):
-            col = 6 + s_idx
-            col_letter = get_column_letter(col)
-
-            # Total Before Tax formula: SUM(items)
-            tbt_cell = ws.cell(
-                row=total_before_tax_row,
-                column=col,
-                value=f"=SUM({col_letter}{start_data_row}:{col_letter}{total_before_tax_row-1})"
+            ws.merge_cells(
+                start_row=pkg_row, start_column=4,
+                end_row=pkg_row, end_column=5
             )
-            tbt_cell.number_format = '$#,##0.00'
-            tbt_cell.alignment = Alignment(horizontal="right", vertical="center")
-            tbt_cell.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
-            tbt_cell.border = SUBTLE_BORDER
+            pkg_label = ws.cell(row=pkg_row, column=4, value=T["package_price"])
+            pkg_label.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
+            pkg_label.alignment = Alignment(vertical="center", horizontal="left")
+            pkg_label.border = SUBTLE_BORDER
 
-            if sup == winner_supplier:
-                tbt_cell.fill = WINNER_BG
+            for s_idx, sup in enumerate(suppliers):
+                col = 6 + s_idx
+                pkg_cell = ws.cell(row=pkg_row, column=col, value=package_totals[sup])
+                pkg_cell.number_format = '$#,##0.00'
+                pkg_cell.alignment = Alignment(horizontal="right", vertical="center")
+                pkg_cell.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
+                pkg_cell.border = SUBTLE_BORDER
+                if sup == winner_supplier:
+                    pkg_cell.fill = WINNER_BG
+
+            next_row += 1
+
+        # === 4b. TOTAL BEFORE TAX ROW (individual mode only) ===
+        if pricing_mode == "individual":
+            total_before_tax_row = next_row
+            ws.row_dimensions[total_before_tax_row].height = 32
+
+            ws.merge_cells(
+                start_row=total_before_tax_row, start_column=4,
+                end_row=total_before_tax_row, end_column=5
+            )
+            tbt_label = ws.cell(row=total_before_tax_row, column=4, value=T["total_before_tax"])
+            tbt_label.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
+            tbt_label.alignment = Alignment(vertical="center", horizontal="left")
+            tbt_label.border = SUBTLE_BORDER
+
+            for s_idx, sup in enumerate(suppliers):
+                col = 6 + s_idx
+                col_letter = get_column_letter(col)
+                tbt_cell = ws.cell(
+                    row=total_before_tax_row,
+                    column=col,
+                    value=f"=SUM({col_letter}{start_data_row}:{col_letter}{total_before_tax_row-1})"
+                )
+                tbt_cell.number_format = '$#,##0.00'
+                tbt_cell.alignment = Alignment(horizontal="right", vertical="center")
+                tbt_cell.font = Font(name='Segoe UI', size=11, bold=True, color=TEXT_PRIMARY)
+                tbt_cell.border = SUBTLE_BORDER
+                if sup == winner_supplier:
+                    tbt_cell.fill = WINNER_BG
+
+            subtotal_row = total_before_tax_row
+            next_row += 1
+        else:
+            subtotal_row = pkg_row
 
         # === 5. TAX ROW ===
-        tax_row = total_before_tax_row + 1
+        tax_row = next_row
         ws.row_dimensions[tax_row].height = 28
 
-        # Merge QTY and LINE ITEM columns for label
         ws.merge_cells(
-            start_row=tax_row,
-            start_column=4,
-            end_row=tax_row,
-            end_column=5
+            start_row=tax_row, start_column=4,
+            end_row=tax_row, end_column=5
         )
-
-        tax_label = ws.cell(row=tax_row, column=4, value=f"{T['tax_label']} ({int(tax_rate*100)}%)")
-        tax_label.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
-        tax_label.alignment = Alignment(vertical="center", horizontal="left")
-        tax_label.border = SUBTLE_BORDER
+        tax_label_cell = ws.cell(row=tax_row, column=4, value=f"{T['tax_label']} ({int(tax_rate*100)}%)")
+        tax_label_cell.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
+        tax_label_cell.alignment = Alignment(vertical="center", horizontal="left")
+        tax_label_cell.border = SUBTLE_BORDER
 
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
             col_letter = get_column_letter(col)
-
-            # Tax formula: Subtotal * tax_rate
             t_cell = ws.cell(
-                row=tax_row,
-                column=col,
-                value=f"={col_letter}{total_before_tax_row}*{tax_rate}"
+                row=tax_row, column=col,
+                value=f"={col_letter}{subtotal_row}*{tax_rate}"
             )
             t_cell.number_format = '$#,##0.00'
             t_cell.alignment = Alignment(horizontal="right", vertical="center")
             t_cell.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
             t_cell.border = SUBTLE_BORDER
-
             if sup == winner_supplier:
                 t_cell.fill = WINNER_BG
 
@@ -552,12 +578,9 @@ if st.button(T["generate_excel_btn"]):
         total_row = tax_row + 1
         ws.row_dimensions[total_row].height = 40
 
-        # Merge DETAILS, IMAGE, QTY, and LINE ITEM columns (leave empty)
         ws.merge_cells(
-            start_row=total_row,
-            start_column=2,
-            end_row=total_row,
-            end_column=5
+            start_row=total_row, start_column=2,
+            end_row=total_row, end_column=5
         )
         empty_cell = ws.cell(row=total_row, column=2, value="")
         empty_cell.fill = DETAILS_BG
@@ -566,18 +589,14 @@ if st.button(T["generate_excel_btn"]):
         for s_idx, sup in enumerate(suppliers):
             col = 6 + s_idx
             col_letter = get_column_letter(col)
-
-            # Total formula: Subtotal + Tax
             tot_cell = ws.cell(
-                row=total_row,
-                column=col,
-                value=f"={col_letter}{total_before_tax_row}+{col_letter}{tax_row}"
+                row=total_row, column=col,
+                value=f"={col_letter}{subtotal_row}+{col_letter}{tax_row}"
             )
             tot_cell.font = Font(name='Segoe UI', bold=True, size=13, color=TEXT_PRIMARY)
             tot_cell.number_format = '$#,##0.00'
             tot_cell.alignment = Alignment(horizontal="right", vertical="center")
             tot_cell.border = TOTAL_BORDER
-
             if sup == winner_supplier:
                 tot_cell.fill = WINNER_BG
 
@@ -585,43 +604,33 @@ if st.button(T["generate_excel_btn"]):
         specs_row = total_row + 1
         ws.row_dimensions[specs_row].height = 60
 
-        # Merge across all columns
         ws.merge_cells(
-            start_row=specs_row,
-            start_column=2,
-            end_row=specs_row,
-            end_column=last_col
+            start_row=specs_row, start_column=2,
+            end_row=specs_row, end_column=last_col
         )
-
         specs_content = ws.cell(
-            row=specs_row,
-            column=2,
+            row=specs_row, column=2,
             value=f"{T['specs_title']}\n\n{T['specs_placeholder']}"
         )
         specs_content.font = Font(name='Segoe UI', size=10, color=TEXT_SECONDARY)
         specs_content.alignment = Alignment(
-            wrap_text=True,
-            vertical="top",
-            horizontal="left",
-            indent=2
+            wrap_text=True, vertical="top", horizontal="left", indent=2
         )
         specs_content.fill = SPECS_BG
         specs_content.border = Border(bottom=Side(style='thin', color="F0F0F0"))
 
-        # Move to next table (with spacing)
         current_row = specs_row + 3
 
     # === COLUMN WIDTH ADJUSTMENTS ===
-    ws.column_dimensions['A'].width = 2   # Left margin
-    ws.column_dimensions['B'].width = 18  # Details
-    ws.column_dimensions['C'].width = 12  # Image
-    ws.column_dimensions['D'].width = 8   # QTY
-    ws.column_dimensions['E'].width = 35  # Line Item
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 8
+    ws.column_dimensions['E'].width = 35
 
     for i in range(len(suppliers)):
         ws.column_dimensions[get_column_letter(6+i)].width = 16
 
-    # Save to downloadable file
     output = io.BytesIO()
     wb.save(output)
 
