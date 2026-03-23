@@ -1,3 +1,4 @@
+import html
 import tempfile
 from pathlib import Path
 
@@ -13,239 +14,342 @@ from build_comparison import (
     build_package_detail,
     first_brand,
     groups_from,
-    is_service,
     items_for,
     price_for,
     price_for_any_type,
     uniq_col,
+    is_service,
 )
 
 st.set_page_config(layout="wide")
 
 REQUIRED_COLUMNS = ["type", "supplier", "brand", "code", "description", "Power Type", "price"]
+EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+EXTRA_LABELS = {
+    "en": {
+        "app_title": "Excel Summary",
+        "language": "Language",
+        "mode": "Mode",
+        "mode_individual": "Individual",
+        "mode_package_detail": "Package Detail",
+        "province": "Province",
+        "upload_csv": "Upload CSV",
+        "loaded": "CSV loaded successfully.",
+        "data_editor": "Review and edit data",
+        "preview": "HTML preview",
+        "generate": "Generate Excel File",
+        "generated": "Excel file generated.",
+        "download": "Download Excel File",
+        "markup_section": "Markup % by supplier",
+        "missing_columns": "Missing required columns",
+        "no_preview": "Upload a CSV to preview the comparison table.",
+        "empty_preview": "No preview rows are available for the selected mode.",
+        "include_specs": "Include Specs block",
+        "include_toggle": "Include Incl. in Total column",
+    },
+    "fr": {
+        "app_title": "Résumé Excel",
+        "language": "Langue",
+        "mode": "Mode",
+        "mode_individual": "Individuel",
+        "mode_package_detail": "Détail du forfait",
+        "province": "Province",
+        "upload_csv": "Téléverser le CSV",
+        "loaded": "CSV chargé avec succès.",
+        "data_editor": "Vérifier et modifier les données",
+        "preview": "Aperçu HTML",
+        "generate": "Générer le fichier Excel",
+        "generated": "Fichier Excel généré.",
+        "download": "Télécharger le fichier Excel",
+        "markup_section": "Majoration % par fournisseur",
+        "missing_columns": "Colonnes requises manquantes",
+        "no_preview": "Téléversez un CSV pour prévisualiser le tableau comparatif.",
+        "empty_preview": "Aucune ligne d’aperçu n’est disponible pour le mode sélectionné.",
+        "include_specs": "Inclure le bloc de spécifications",
+        "include_toggle": "Inclure la colonne Incl. au total",
+    },
+}
 
 
 def label(lang: str, key: str) -> str:
     return _LABELS.get(lang, _LABELS["en"]).get(key, _LABELS["en"].get(key, key))
 
 
-def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    for col in ["type", "supplier", "brand", "code", "description", "Power Type"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-    if "price" in df.columns:
-        df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0.0)
-    return df
+def app_label(lang: str, key: str) -> str:
+    return EXTRA_LABELS.get(lang, EXTRA_LABELS["en"]).get(key, EXTRA_LABELS["en"].get(key, key))
 
 
-def currency(value: float | int | None) -> str:
-    if value is None or value == "":
+def text(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
+    if pd.isna(value):
+        return ""
+    value = str(value)
+    return "" if value.lower() == "nan" else value.strip()
+
+
+def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy().fillna("")
+    for col in ["type", "supplier", "brand", "code", "description", "Power Type"]:
+        if col in normalized.columns:
+            normalized[col] = normalized[col].map(text)
+    if "price" in normalized.columns:
+        normalized["price"] = pd.to_numeric(normalized["price"], errors="coerce").fillna(0.0)
+    return normalized
+
+
+def currency(value: float | int) -> str:
     return f"${float(value):,.2f}"
 
 
+def render_text(value: object) -> str:
+    return html.escape(text(value)).replace("\n", "<br>")
+
+
 def marked_up_price(base_price: float, supplier: str, markup: dict[str, float], description: str) -> float:
+    if base_price <= 0:
+        return 0.0
     pct = markup.get(supplier, 0.0) / 100.0
-    return base_price if is_service(str(description)) else base_price * (1 + pct)
+    return base_price if is_service(text(description)) else base_price * (1 + pct)
+
+
+def build_cfg(lang: str, mode: str, province: str, include_toggle: bool, include_specs: bool, markup: dict[str, float]) -> dict:
+    tax_rate = PROVINCE_TAX[province]
+    return {
+        "lang": lang,
+        "mode": mode,
+        "tax_rate": tax_rate,
+        "tax_label": f"{tax_rate}% {province}",
+        "include_toggle": include_toggle,
+        "include_specs": include_specs,
+        "include_image": False,
+        "markup": markup,
+        "title": label(lang, "default_title_ind") if mode == "individual" else label(lang, "default_title_pkg"),
+        "output_xlsx": "",
+    }
 
 
 def preview_styles() -> str:
     return """
     <style>
-      .pa-table {border-collapse: collapse; width: 100%; margin: 0 0 2rem 0; font-family: Arial, sans-serif;}
-      .pa-table th, .pa-table td {border: 1px solid #d9d9d9; padding: 6px 8px; vertical-align: middle;}
-      .pa-table th {background: #f8f9fa; color: #555; font-size: 0.9rem;}
-      .winner-col, .winner-head {background: #f2faf2;}
-      .details-cell {background: #fafafa; white-space: pre-line; vertical-align: top; min-width: 180px;}
-      .image-cell {background: #fff; min-width: 80px;}
+      .preview-wrap {font-family: Arial, sans-serif; color: #1d1d1f;}
+      .preview-table {border-collapse: collapse; width: 100%; margin: 0 0 24px 0; table-layout: fixed;}
+      .preview-table th, .preview-table td {border: 1px solid #d7dde5; padding: 8px 10px; vertical-align: middle; color: #1d1d1f;}
+      .preview-table th {background: #f8f9fa; color: #666; font-size: 12px; letter-spacing: 0.03em; text-transform: uppercase;}
+      .preview-title {margin: 0 0 10px 0; font-size: 20px; color: #1d1d1f;}
+      .preview-subtitle {margin: 0 0 16px 0; font-size: 14px; color: #666;}
+      .details-cell {background: #fafafa; white-space: pre-line; vertical-align: top; width: 180px;}
+      .image-cell {background: #ffffff; width: 90px;}
+      .qty-cell, .toggle-cell, .indent-cell {text-align: center;}
+      .desc-cell {text-align: left;}
       .num {text-align: right; white-space: nowrap;}
-      .center {text-align: center;}
-      .subitem {color: #555; font-style: italic; padding-left: 1.25rem;}
-      .summary-label {font-weight: 700; text-align: right;}
-      .best-row td {background: #f2faf2; font-weight: 700; color: #1b5e20; text-align: center;}
+      .winner-col, .winner-head {background: #f2faf2 !important;}
+      .summary-label {font-weight: 700; text-align: right; background: #fbfbfc;}
+      .section-gap {height: 18px;}
+      .specs-block {padding: 12px 14px; background: #fafafa; border: 1px solid #e5e7eb; margin: 0 0 24px 0;}
+      .subitem-row td {background: #f4f7fb; color: #555;}
+      .subitem-desc {padding-left: 24px; font-style: italic;}
+      .best-row td {background: #f2faf2; color: #1b5e20; font-weight: 700; text-align: center;}
+      .muted {color: #9aa0a6;}
     </style>
     """
 
 
+def supplier_totals_for_group(items: pd.DataFrame, suppliers: list[str], descriptions: list[str], markup: dict[str, float]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for supplier in suppliers:
+        total = 0.0
+        for desc in descriptions:
+            total += marked_up_price(price_for(items, supplier, desc), supplier, markup, desc)
+        totals[supplier] = total
+    return totals
+
+
+def winner_from_totals(totals: dict[str, float], tax_rate: float) -> str:
+    candidates = [supplier for supplier, total in totals.items() if total > 0]
+    if not candidates:
+        return ""
+    return min(candidates, key=lambda supplier: totals[supplier] * (1 + tax_rate))
+
+
 def build_individual_preview(df: pd.DataFrame, cfg: dict) -> str:
-    sections: list[str] = [preview_styles()]
-    tr = cfg["tax_rate"] / 100.0
-    tl = cfg["tax_label"]
-    show_toggle = cfg["include_toggle"]
+    groups = groups_from(df)
+    if not groups:
+        return ""
+
+    lang = cfg["lang"]
+    tax_rate = cfg["tax_rate"] / 100.0
     markup = cfg["markup"]
+    html_parts = [preview_styles(), "<div class='preview-wrap'>"]
 
-    for code, power_type in groups_from(df):
+    for code, power_type in groups:
         items = items_for(df, code, power_type)
-        suppliers = uniq_col(items, "supplier")
-        descriptions = uniq_col(items, "description")
-        brand = first_brand(items)
+        suppliers = [text(supplier) for supplier in uniq_col(items, "supplier") if text(supplier)]
+        descriptions = [text(desc) for desc in uniq_col(items, "description") if text(desc)]
+        if not suppliers or not descriptions:
+            continue
 
-        totals_before_tax: dict[str, float] = {}
-        for supplier in suppliers:
-            total = 0.0
-            for desc in descriptions:
+        brand = text(first_brand(items))
+        totals_before_tax = supplier_totals_for_group(items, suppliers, descriptions, markup)
+        winner = winner_from_totals(totals_before_tax, tax_rate)
+        tax_totals = {supplier: total * tax_rate for supplier, total in totals_before_tax.items()}
+        grand_totals = {supplier: totals_before_tax[supplier] + tax_totals[supplier] for supplier in suppliers}
+        summary_colspan = 5 if cfg["include_toggle"] else 4
+        merged_rowspan = len(descriptions)
+
+        html_parts.append(f"<h3 class='preview-title'>{render_text(cfg['title'])}</h3>")
+        html_parts.append(f"<div class='preview-subtitle'>{render_text(code)} — {render_text(power_type)}</div>")
+        html_parts.append("<table class='preview-table'><thead><tr>")
+
+        headers = [label(lang, "details"), label(lang, "image")]
+        if cfg["include_toggle"]:
+            headers.append(label(lang, "incl_in_total"))
+        headers.extend([label(lang, "qty"), label(lang, "line_item")])
+        headers.extend(suppliers)
+
+        for header in headers:
+            header_class = "winner-head" if header == winner else ""
+            html_parts.append(f"<th class='{header_class}'>{render_text(header)}</th>")
+        html_parts.append("</tr></thead><tbody>")
+
+        details_text = (
+            f"{label(lang, 'brand_label')}\n{brand}\n\n"
+            f"{label(lang, 'code_label')}\n{code}\n\n"
+            f"{label(lang, 'power_label')}\n{power_type}"
+        )
+
+        for index, desc in enumerate(descriptions):
+            html_parts.append("<tr>")
+            if index == 0:
+                html_parts.append(f"<td class='details-cell' rowspan='{merged_rowspan}'>{render_text(details_text)}</td>")
+                html_parts.append(f"<td class='image-cell' rowspan='{merged_rowspan}'></td>")
+            if cfg["include_toggle"]:
+                html_parts.append("<td class='toggle-cell'>✓</td>")
+            html_parts.append("<td class='qty-cell'>1</td>")
+            html_parts.append(f"<td class='desc-cell'>{render_text(desc)}</td>")
+            for supplier in suppliers:
                 base = price_for(items, supplier, desc)
-                if base > 0:
-                    line_total = marked_up_price(base, supplier, markup, desc)
-                    if not show_toggle or True:
-                        total += line_total
-            totals_before_tax[supplier] = total
+                display = currency(marked_up_price(base, supplier, markup, desc)) if base > 0 else ""
+                col_class = "num winner-col" if supplier == winner else "num"
+                html_parts.append(f"<td class='{col_class}'>{display}</td>")
+            html_parts.append("</tr>")
 
-        winner = min(
-            (s for s in suppliers if totals_before_tax.get(s, 0) > 0),
-            key=lambda s: totals_before_tax[s] * (1 + tr),
-            default="",
-        )
-
-        header = [label(cfg["lang"], "details"), label(cfg["lang"], "image")]
-        if show_toggle:
-            header.append(label(cfg["lang"], "incl_in_total"))
-        header.extend([label(cfg["lang"], "qty"), label(cfg["lang"], "line_item")])
-        header.extend(suppliers)
-
-        rows = [f"<h4>{code} — {power_type}</h4>", "<table class='pa-table'>", "<thead><tr>"]
-        for heading in header:
-            cls = "winner-head" if heading == winner else ""
-            rows.append(f"<th class='{cls}'>{heading}</th>")
-        rows.append("</tr></thead><tbody>")
-
-        details = (
-            f"{label(cfg['lang'], 'brand_label')}\n{brand}\n\n"
-            f"{label(cfg['lang'], 'code_label')}\n{code}\n\n"
-            f"{label(cfg['lang'], 'power_label')}\n{power_type}"
-        )
-        span = len(descriptions) + 2
-
-        for idx, desc in enumerate(descriptions):
-            rows.append("<tr>")
-            if idx == 0:
-                rows.append(f"<td class='details-cell' rowspan='{span}'>{details}</td>")
-                rows.append(f"<td class='image-cell' rowspan='{span}'></td>")
-            if show_toggle:
-                rows.append("<td class='center'>✓</td>")
-            rows.append("<td class='center'>1</td>")
-            rows.append(f"<td>{desc}</td>")
+        summaries = [
+            (label(lang, "total_before_tax"), totals_before_tax),
+            (f"{label(lang, 'tax')} {cfg['tax_label']}", tax_totals),
+            (label(lang, "total"), grand_totals),
+        ]
+        for summary_label, values in summaries:
+            html_parts.append("<tr>")
+            html_parts.append(f"<td colspan='{summary_colspan}' class='summary-label'>{render_text(summary_label)}</td>")
             for supplier in suppliers:
-                value = price_for(items, supplier, desc)
-                display = currency(marked_up_price(value, supplier, markup, desc)) if value > 0 else ""
-                cls = "num winner-col" if supplier == winner else "num"
-                rows.append(f"<td class='{cls}'>{display}</td>")
-            rows.append("</tr>")
+                col_class = "num winner-col" if supplier == winner else "num"
+                html_parts.append(f"<td class='{col_class}'>{currency(values[supplier])}</td>")
+            html_parts.append("</tr>")
 
-        tax_totals = {s: totals_before_tax[s] * tr for s in suppliers}
-        grand_totals = {s: totals_before_tax[s] + tax_totals[s] for s in suppliers}
-
-        for title_key, source in [
-            ("total_before_tax", totals_before_tax),
-            ("tax", tax_totals),
-            ("total", grand_totals),
-        ]:
-            rows.append("<tr>")
-            if show_toggle:
-                rows.append(f"<td colspan='3' class='summary-label'>{label(cfg['lang'], title_key)} {tl if title_key == 'tax' else ''}</td>")
-            else:
-                rows.append(f"<td colspan='2' class='summary-label'>{label(cfg['lang'], title_key)} {tl if title_key == 'tax' else ''}</td>")
-            for supplier in suppliers:
-                cls = "num winner-col" if supplier == winner else "num"
-                rows.append(f"<td class='{cls}'>{currency(source[supplier])}</td>")
-            rows.append("</tr>")
-
-        rows.append("</tbody></table>")
+        html_parts.append("</tbody></table>")
         if cfg["include_specs"]:
-            rows.append(f"<div><strong>{label(cfg['lang'], 'specs_header')}</strong><p>{label(cfg['lang'], 'specs_placeholder')}</p></div>")
-        sections.append("".join(rows))
+            html_parts.append(
+                f"<div class='specs-block'><strong>{render_text(label(lang, 'specs_header'))}</strong><br><br>{render_text(label(lang, 'specs_placeholder'))}</div>"
+            )
+        html_parts.append("<div class='section-gap'></div>")
 
-    return "".join(sections)
+    html_parts.append("</div>")
+    return "".join(html_parts)
 
 
 def build_package_detail_preview(df: pd.DataFrame, cfg: dict) -> str:
-    markup = cfg["markup"]
-    tr = cfg["tax_rate"] / 100.0
     rows_data = all_items_with_subitems(df)
-    suppliers = all_suppliers(df)
-    show_toggle = cfg["include_toggle"]
+    suppliers = [text(supplier) for supplier in all_suppliers(df) if text(supplier)]
+    if not rows_data or not suppliers:
+        return ""
 
-    subtotals: dict[str, float] = {supplier: 0.0 for supplier in suppliers}
+    lang = cfg["lang"]
+    tax_rate = cfg["tax_rate"] / 100.0
+    markup = cfg["markup"]
+    subtotals = {supplier: 0.0 for supplier in suppliers}
+
     for row in rows_data:
         for supplier in suppliers:
             base = price_for_any_type(df, supplier, row["code"], row["description"])
-            if base > 0:
-                subtotals[supplier] += marked_up_price(base, supplier, markup, row["description"])
+            subtotals[supplier] += marked_up_price(base, supplier, markup, row["description"])
 
-    winner = min(
-        (s for s in suppliers if subtotals.get(s, 0) > 0),
-        key=lambda s: subtotals[s] * (1 + tr),
-        default="",
-    )
+    winner = winner_from_totals(subtotals, tax_rate)
+    tax_totals = {supplier: total * tax_rate for supplier, total in subtotals.items()}
+    grand_totals = {supplier: subtotals[supplier] + tax_totals[supplier] for supplier in suppliers}
+    summary_colspan = 7 if cfg["include_toggle"] else 6
 
-    header = ["", label(cfg["lang"], "brand"), label(cfg["lang"], "code"), label(cfg["lang"], "description"), label(cfg["lang"], "image")]
-    if show_toggle:
-        header.append(label(cfg["lang"], "incl_in_total"))
-    header.append(label(cfg["lang"], "qty"))
-    header.extend(suppliers)
+    html_parts = [preview_styles(), "<div class='preview-wrap'>"]
+    html_parts.append(f"<h3 class='preview-title'>{render_text(cfg['title'])}</h3>")
+    html_parts.append("<table class='preview-table'><thead><tr>")
 
-    html = [preview_styles(), "<table class='pa-table'><thead><tr>"]
-    for heading in header:
-        cls = "winner-head" if heading == winner else ""
-        html.append(f"<th class='{cls}'>{heading}</th>")
-    html.append("</tr></thead><tbody>")
+    headers = ["", label(lang, "brand"), label(lang, "code"), label(lang, "description"), label(lang, "image")]
+    if cfg["include_toggle"]:
+        headers.append(label(lang, "incl_in_total"))
+    headers.append(label(lang, "qty"))
+    headers.extend(suppliers)
+
+    for header in headers:
+        header_class = "winner-head" if header == winner else ""
+        html_parts.append(f"<th class='{header_class}'>{render_text(header)}</th>")
+    html_parts.append("</tr></thead><tbody>")
 
     for row in rows_data:
-        is_sub = row["type"] == "subitem"
-        html.append("<tr>")
-        html.append(f"<td class='center'>{'↳' if is_sub else ''}</td>")
-        html.append(f"<td>{'' if is_sub else row['brand']}</td>")
-        html.append(f"<td>{'' if is_sub else row['code']}</td>")
-        desc_cls = "subitem" if is_sub else ""
-        html.append(f"<td class='{desc_cls}'>{row['description']}</td>")
-        html.append("<td></td>")
-        if show_toggle:
-            html.append("<td class='center'>✓</td>")
-        html.append("<td class='center'>1</td>")
+        is_subitem = row["type"] == "subitem"
+        row_class = "subitem-row" if is_subitem else ""
+        html_parts.append(f"<tr class='{row_class}'>")
+        html_parts.append(f"<td class='indent-cell'>{'↳' if is_subitem else ''}</td>")
+        html_parts.append(f"<td>{'' if is_subitem else render_text(row['brand'])}</td>")
+        html_parts.append(f"<td>{'' if is_subitem else render_text(row['code'])}</td>")
+        desc_class = "desc-cell subitem-desc" if is_subitem else "desc-cell"
+        html_parts.append(f"<td class='{desc_class}'>{render_text(row['description'])}</td>")
+        html_parts.append("<td></td>")
+        if cfg["include_toggle"]:
+            html_parts.append("<td class='toggle-cell'>✓</td>")
+        html_parts.append("<td class='qty-cell'>1</td>")
         for supplier in suppliers:
             base = price_for_any_type(df, supplier, row["code"], row["description"])
             if base > 0:
-                display = currency(marked_up_price(base, supplier, markup, row["description"]))
-                cls = "num winner-col" if supplier == winner else "num"
+                value = currency(marked_up_price(base, supplier, markup, row["description"]))
+                col_class = "num winner-col" if supplier == winner else "num"
             else:
-                display = "—" if is_sub else ""
-                cls = "center winner-col" if supplier == winner else "center"
-            html.append(f"<td class='{cls}'>{display}</td>")
-        html.append("</tr>")
+                value = "—" if is_subitem else ""
+                col_class = "winner-col muted" if supplier == winner else "muted"
+            html_parts.append(f"<td class='{col_class}'>{value}</td>")
+        html_parts.append("</tr>")
 
-    tax_totals = {s: subtotals[s] * tr for s in suppliers}
-    grand_totals = {s: subtotals[s] + tax_totals[s] for s in suppliers}
-    colspan = 7 if show_toggle else 6
-    for key, source in [
-        ("subtotal", subtotals),
-        ("tax", tax_totals),
-        ("total", grand_totals),
-    ]:
-        suffix = f" {cfg['tax_label']}" if key == "tax" else ""
-        html.append(f"<tr><td colspan='{colspan}' class='summary-label'>{label(cfg['lang'], key)}{suffix}</td>")
+    summaries = [
+        (label(lang, "subtotal"), subtotals),
+        (f"{label(lang, 'tax')} {cfg['tax_label']}", tax_totals),
+        (label(lang, "total"), grand_totals),
+    ]
+    for summary_label, values in summaries:
+        html_parts.append("<tr>")
+        html_parts.append(f"<td colspan='{summary_colspan}' class='summary-label'>{render_text(summary_label)}</td>")
         for supplier in suppliers:
-            cls = "num winner-col" if supplier == winner else "num"
-            html.append(f"<td class='{cls}'>{currency(source[supplier])}</td>")
-        html.append("</tr>")
+            col_class = "num winner-col" if supplier == winner else "num"
+            html_parts.append(f"<td class='{col_class}'>{currency(values[supplier])}</td>")
+        html_parts.append("</tr>")
 
-    html.append(f"<tr class='best-row'><td colspan='{colspan}'></td>")
+    html_parts.append(f"<tr class='best-row'><td colspan='{summary_colspan}'></td>")
     for supplier in suppliers:
-        html.append(f"<td>{label(cfg['lang'], 'best_price') if supplier == winner else ''}</td>")
-    html.append("</tr></tbody></table>")
-    return "".join(html)
-
-
-def reset_for_new_upload(file_name: str | None, file_bytes: bytes | None) -> None:
-    current_sig = (file_name, file_bytes)
-    if st.session_state.get("upload_signature") != current_sig:
-        st.session_state.upload_signature = current_sig
-        st.session_state.excel_data = None
-        st.session_state.df = None
+        html_parts.append(f"<td>{render_text(label(lang, 'best_price')) if supplier == winner else ''}</td>")
+    html_parts.append("</tr></tbody></table></div>")
+    return "".join(html_parts)
 
 
 def validate_df(df: pd.DataFrame) -> list[str]:
-    return [col for col in REQUIRED_COLUMNS if col not in df.columns]
+    return [column for column in REQUIRED_COLUMNS if column not in df.columns]
+
+
+def reset_for_new_upload(file_name: str | None, file_bytes: bytes | None) -> None:
+    signature = (file_name, file_bytes)
+    if st.session_state.get("upload_signature") != signature:
+        st.session_state.upload_signature = signature
+        st.session_state.df = None
+        st.session_state.excel_data = None
 
 
 for key, default in {
@@ -255,44 +359,48 @@ for key, default in {
 }.items():
     st.session_state.setdefault(key, default)
 
-lang = st.sidebar.selectbox("en / fr", options=["en", "fr"], index=0)
-mode = st.sidebar.radio(label(lang, "line_item"), options=["individual", "package_detail"], index=0)
-province_options = list(PROVINCE_TAX.keys())
-province = st.sidebar.selectbox(label(lang, "tax"), options=province_options, index=province_options.index("QC"))
-include_toggle = st.sidebar.checkbox(label(lang, "incl_in_total"), value=True)
+lang = st.sidebar.selectbox(app_label("en", "language"), options=["en", "fr"], format_func=lambda value: value.upper())
+mode = st.sidebar.radio(
+    app_label(lang, "mode"),
+    options=["individual", "package_detail"],
+    format_func=lambda value: app_label(lang, f"mode_{value}"),
+)
+province_codes = list(PROVINCE_TAX.keys())
+province = st.sidebar.selectbox(app_label(lang, "province"), options=province_codes, index=province_codes.index("QC"))
+include_toggle = st.sidebar.checkbox(app_label(lang, "include_toggle"), value=True)
 include_specs = st.sidebar.checkbox(
-    label(lang, "specs_header"),
+    app_label(lang, "include_specs"),
     value=False,
     disabled=mode == "package_detail",
 )
 if mode == "package_detail":
     include_specs = False
 
-st.title(label(lang, "sheet_name"))
-st.caption(f"{label(lang, 'default_title_ind') if mode == 'individual' else label(lang, 'default_title_pkg')} · {province}")
+st.title(app_label(lang, "app_title"))
+st.caption(f"{label(lang, 'sheet_name')} · {province}")
 
-uploaded_file = st.file_uploader("CSV", type=["csv"])
+uploaded_file = st.file_uploader(app_label(lang, "upload_csv"), type=["csv"])
 file_bytes = uploaded_file.getvalue() if uploaded_file else None
 reset_for_new_upload(uploaded_file.name if uploaded_file else None, file_bytes)
 
 if uploaded_file and file_bytes is not None:
-    df = normalize_df(pd.read_csv(uploaded_file))
-    missing = validate_df(df)
-    if missing:
-        st.error(f"Missing required columns: {', '.join(missing)}")
+    candidate_df = normalize_df(pd.read_csv(uploaded_file))
+    missing_columns = validate_df(candidate_df)
+    if missing_columns:
+        st.error(f"{app_label(lang, 'missing_columns')}: {', '.join(missing_columns)}")
     else:
-        st.session_state.df = df
-        st.success(f"{label(lang, 'sheet_name')}: {uploaded_file.name}")
+        st.session_state.df = candidate_df
+        st.success(app_label(lang, "loaded"))
 
 if st.session_state.df is not None:
-    st.subheader(label(lang, "description"))
+    st.subheader(app_label(lang, "data_editor"))
     st.session_state.df = normalize_df(
         st.data_editor(st.session_state.df, use_container_width=True, num_rows="dynamic")
     )
 
-    suppliers = all_suppliers(st.session_state.df)
+    suppliers = [text(supplier) for supplier in all_suppliers(st.session_state.df) if text(supplier)]
     st.sidebar.markdown("---")
-    st.sidebar.subheader(label(lang, "markup_pct"))
+    st.sidebar.subheader(app_label(lang, "markup_section"))
     markup = {
         supplier: st.sidebar.number_input(
             supplier,
@@ -304,37 +412,34 @@ if st.session_state.df is not None:
         for supplier in suppliers
     }
 
-    cfg = {
-        "lang": lang,
-        "tax_rate": PROVINCE_TAX[province],
-        "tax_label": f"{PROVINCE_TAX[province]}% {province}",
-        "include_toggle": include_toggle,
-        "include_specs": include_specs,
-        "include_image": False,
-        "markup": markup,
-        "output_xlsx": "",
-    }
-
-    st.subheader("HTML preview")
+    cfg = build_cfg(lang, mode, province, include_toggle, include_specs, markup)
+    st.subheader(app_label(lang, "preview"))
     preview_html = build_individual_preview(st.session_state.df, cfg) if mode == "individual" else build_package_detail_preview(st.session_state.df, cfg)
-    st.components.v1.html(preview_html, height=900, scrolling=True)
+    if preview_html:
+        st.markdown(preview_html, unsafe_allow_html=True)
+    else:
+        st.info(app_label(lang, "empty_preview"))
 
-    if st.button("Generate Excel File"):
+    if st.button(app_label(lang, "generate")):
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            cfg["output_xlsx"] = tmp.name
-        if mode == "individual":
-            build_individual(st.session_state.df, cfg)
-        else:
-            build_package_detail(st.session_state.df, cfg)
-        with open(cfg["output_xlsx"], "rb") as fh:
-            st.session_state.excel_data = fh.read()
-        Path(cfg["output_xlsx"]).unlink(missing_ok=True)
-        st.success("Excel file generated.")
+            output_path = tmp.name
+        cfg["output_xlsx"] = output_path
+        try:
+            if mode == "individual":
+                build_individual(st.session_state.df, cfg)
+            else:
+                build_package_detail(st.session_state.df, cfg)
+            st.session_state.excel_data = Path(output_path).read_bytes()
+            st.success(app_label(lang, "generated"))
+        finally:
+            Path(output_path).unlink(missing_ok=True)
+else:
+    st.info(app_label(lang, "no_preview"))
 
 if st.session_state.excel_data is not None:
     st.download_button(
-        "Download Excel",
+        app_label(lang, "download"),
         data=st.session_state.excel_data,
         file_name="price_analysis.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        mime=EXCEL_MIME,
     )
