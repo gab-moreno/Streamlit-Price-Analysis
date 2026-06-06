@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Price Analysis — Before &amp; After</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ─── Reset & Base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue:   #288AD6;
+    --blue-lt:#EBF5FC;
+    --blue-dk:#1a6aaa;
+    --red:    #E05252;
+    --red-lt: #FDF2F2;
+    --green:  #2EAF6E;
+    --green-lt:#F0FAF5;
+    --ink:    #111827;
+    --muted:  #6B7280;
+    --border: #E5E7EB;
+    --bg:     #FFFFFF;
+    --bg2:    #F9FAFB;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+
+  /* ─── Slide Container ───────────────────────────────────────────── */
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 64px 80px;
+    opacity: 0;
+    transform: translateY(32px);
+    pointer-events: none;
+    transition: opacity .45s ease, transform .45s ease;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+  }
+
+  .slide.exit-up {
+    opacity: 0;
+    transform: translateY(-32px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+
+  /* ─── Navigation ────────────────────────────────────────────────── */
+  .nav {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    z-index: 100;
+  }
+
+  .nav-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .2s, background .2s, transform .15s;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+
+  .nav-btn:hover { border-color: var(--blue); background: var(--blue-lt); transform: scale(1.07); }
+  .nav-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+
+  .progress-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background .3s, transform .3s;
+    cursor: pointer;
+  }
+
+  .dot.active { background: var(--blue); transform: scale(1.3); }
+
+  /* ─── Slide Number ──────────────────────────────────────────────── */
+  .slide-num {
+    position: fixed;
+    top: 28px;
+    right: 36px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .05em;
+    z-index: 100;
+  }
+
+  /* ─── Typography helpers ────────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+  }
+
+  h1 { font-size: clamp(36px, 5vw, 60px); font-weight: 700; line-height: 1.1; }
+  h2 { font-size: clamp(26px, 3.5vw, 42px); font-weight: 700; line-height: 1.2; }
+  h3 { font-size: 18px; font-weight: 600; }
+
+  .sub {
+    font-size: clamp(15px, 1.8vw, 19px);
+    color: var(--muted);
+    font-weight: 400;
+    line-height: 1.6;
+    max-width: 600px;
+  }
+
+  /* ─── Divider ───────────────────────────────────────────────────── */
+  .rule {
+    width: 48px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--blue);
+    margin: 20px 0 28px;
+  }
+
+  /* ─── SLIDE 1 — Title ───────────────────────────────────────────── */
+  #s1 { background: var(--bg); text-align: center; }
+  #s1 h1 { max-width: 820px; }
+  #s1 .sub { margin: 20px auto 0; }
+  #s1 .rule { margin: 20px auto 28px; }
+
+  /* ─── SLIDE 2 — The Old Way ─────────────────────────────────────── */
+  #s2 { background: var(--bg); align-items: flex-start; }
+
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 32px;
+  }
+
+  .step-card {
+    border-radius: 12px;
+    padding: 22px 18px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .step-card.bad  { background: var(--red-lt);   border: 1px solid #FCCACA; }
+  .step-card.good { background: var(--green-lt);  border: 1px solid #B6E8CE; }
+
+  .step-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+
+  .step-card.bad  .step-icon { background: #FDDADA; }
+  .step-card.good .step-icon { background: #C4EED9; }
+
+  .step-card h3 { font-size: 13px; font-weight: 600; }
+
+  .step-card p {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    align-self: flex-start;
+  }
+
+  .badge.pain { background: #FCCACA; color: #B91C1C; }
+  .badge.win  { background: #B6E8CE; color: #166534; }
+
+  .arrow-connector {
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: var(--muted);
+    z-index: 1;
+  }
+
+  /* ─── SLIDE 3 — The New Way ─────────────────────────────────────── */
+  #s3 { background: var(--bg); align-items: flex-start; }
+
+  /* ─── SLIDE 4 — Side by Side ────────────────────────────────────── */
+  #s4 { background: var(--bg2); }
+
+  .compare-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    width: 100%;
+    max-width: 1000px;
+    margin-top: 32px;
+  }
+
+  .compare-col {
+    border-radius: 16px;
+    padding: 28px;
+  }
+
+  .compare-col.before { background: var(--red-lt); border: 1.5px solid #FCCACA; }
+  .compare-col.after  { background: var(--green-lt); border: 1.5px solid #B6E8CE; }
+
+  .compare-col-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .compare-col.before .compare-col-title { color: var(--red); }
+  .compare-col.after  .compare-col-title { color: var(--green); }
+
+  .compare-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .compare-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .compare-list li .icon {
+    flex-shrink: 0;
+    font-size: 15px;
+    margin-top: 1px;
+  }
+
+  /* ─── SLIDE 5 — Impact ──────────────────────────────────────────── */
+  #s5 { background: var(--bg); text-align: center; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    width: 100%;
+    max-width: 900px;
+    margin-top: 40px;
+  }
+
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 36px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .metric-num {
+    font-size: clamp(42px, 5vw, 60px);
+    font-weight: 700;
+    color: var(--blue);
+    line-height: 1;
+  }
+
+  .metric-label {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.4;
+    max-width: 160px;
+  }
+
+  /* ─── SLIDE 6 — App Highlights ──────────────────────────────────── */
+  #s6 { background: var(--bg); align-items: flex-start; }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    width: 100%;
+    max-width: 1000px;
+    margin-top: 32px;
+  }
+
+  .feature-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: box-shadow .2s, transform .2s;
+  }
+
+  .feature-card:hover {
+    box-shadow: 0 8px 24px rgba(40,138,214,.1);
+    transform: translateY(-2px);
+  }
+
+  .feature-icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .feature-card h3 { font-size: 14px; font-weight: 600; }
+  .feature-card p  { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+
+  /* ─── SLIDE 7 — Thank You ───────────────────────────────────────── */
+  #s7 { background: var(--ink); color: #FFFFFF; text-align: center; }
+
+  #s7 h2 { color: #FFFFFF; }
+  #s7 .rule { background: var(--blue); margin: 20px auto 28px; }
+  #s7 .sub  { color: rgba(255,255,255,.6); margin: 0 auto; }
+
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 30px;
+    padding: 8px 18px;
+    font-size: 13px;
+    color: rgba(255,255,255,.7);
+    margin-top: 32px;
+  }
+
+  .tag-pill span { color: var(--blue); font-weight: 600; }
+
+  /* ─── Logo / brand mark ─────────────────────────────────────────── */
+  .brand {
+    position: fixed;
+    top: 28px;
+    left: 36px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 100;
+  }
+
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+    background: var(--blue);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+  }
+
+  .brand-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* ─── Keyboard hint ─────────────────────────────────────────────── */
+  .hint {
+    position: fixed;
+    bottom: 32px;
+    right: 36px;
+    font-size: 11px;
+    color: var(--border);
+    letter-spacing: .04em;
+    z-index: 100;
+  }
+
+  #s7 ~ .hint { color: rgba(255,255,255,.15); }
+</style>
+</head>
+<body>
+
+<!-- ─── Brand ────────────────────────────────────────────────────── -->
+<div class="brand">
+  <div class="brand-icon">📊</div>
+  <div class="brand-name">Price Analysis</div>
+</div>
+
+<!-- ─── Slide Number ─────────────────────────────────────────────── -->
+<div class="slide-num" id="slideNum">1 / 7</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SLIDES
+═══════════════════════════════════════════════════════════════ -->
+<div class="deck" id="deck">
+
+  <!-- ── SLIDE 1 — Title ──────────────────────────────────────── -->
+  <section class="slide active" id="s1">
+    <div class="eyebrow">Procurement Transformation</div>
+    <h1>From Manual Grind<br/>to One-Click Analysis</h1>
+    <div class="rule"></div>
+    <p class="sub">How a custom-built price analysis tool eliminated hours of error-prone work and gave the team a consistent, professional output — every time.</p>
+  </section>
+
+  <!-- ── SLIDE 2 — The Old Way ─────────────────────────────────── -->
+  <section class="slide" id="s2">
+    <div class="eyebrow">Before</div>
+    <h2>The Old Process</h2>
+    <div class="steps-grid">
+
+      <div class="step-card bad">
+        <div class="step-icon">📋</div>
+        <h3>Find Request in Smartsheet</h3>
+        <p>Navigate to the row, locate the right record among many, email the report to yourself.</p>
+        <div class="badge pain">Manual lookup</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card bad">
+        <div class="step-icon">🧹</div>
+        <h3>Clean Up the Email</h3>
+        <p>Manually strip empty fields and white-space from the emailed report before it was usable.</p>
+        <div class="badge pain">Wasted prep time</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card bad">
+        <div class="step-icon">🔍</div>
+        <h3>Hunt for Supplier Quotes</h3>
+        <p>Search your inbox by full subject line to locate each quote across multiple threads.</p>
+        <div class="badge pain">Error-prone search</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card bad">
+        <div class="step-icon">📝</div>
+        <h3>Build Analysis Manually</h3>
+        <p>Manually assemble a price comparison table in a document — highly prone to copy-paste mistakes.</p>
+        <div class="badge pain">High error risk</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card bad">
+        <div class="step-icon">🖼️</div>
+        <h3>Paste as Image to Customer</h3>
+        <p>Screenshot the table and paste it as an image — no formulas, ugly formatting, no audit trail.</p>
+        <div class="badge pain">Unprofessional output</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SLIDE 3 — The New Way ─────────────────────────────────── -->
+  <section class="slide" id="s3">
+    <div class="eyebrow">After</div>
+    <h2>The New Process</h2>
+    <div class="steps-grid">
+
+      <div class="step-card good">
+        <div class="step-icon">⚡</div>
+        <h3>Power Automate Flow</h3>
+        <p>A unique request code triggers the flow. The request is automatically saved to the correct customer folder in SharePoint.</p>
+        <div class="badge win">Zero manual filing</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card good">
+        <div class="step-icon">📂</div>
+        <h3>Auto-Organized Folders</h3>
+        <p>Quotes from suppliers land under the right request folder, grouped by customer — consistent across every request.</p>
+        <div class="badge win">Always findable</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card good">
+        <div class="step-icon">🔑</div>
+        <h3>Search by Unique Code</h3>
+        <p>One search with the unique request code finds the exact folder instantly. No inbox hunting needed.</p>
+        <div class="badge win">Instant retrieval</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card good">
+        <div class="step-icon">📤</div>
+        <h3>Upload PDFs to App</h3>
+        <p>Copy and paste quote PDFs into the Streamlit app. Power Automate extracts the data and loads it automatically.</p>
+        <div class="badge win">Auto extraction</div>
+        <span class="arrow-connector">›</span>
+      </div>
+
+      <div class="step-card good">
+        <div class="step-icon">📥</div>
+        <h3>Download Final Excel</h3>
+        <p>Review the live table, adjust tax or qty if needed, and generate a formatted professional Excel — in seconds.</p>
+        <div class="badge win">Publication-ready</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SLIDE 4 — Side by Side ────────────────────────────────── -->
+  <section class="slide" id="s4">
+    <div class="eyebrow">Comparison</div>
+    <h2>Before vs. After</h2>
+    <div class="compare-wrap">
+
+      <div class="compare-col before">
+        <div class="compare-col-title">✕&nbsp; Before</div>
+        <ul class="compare-list">
+          <li><span class="icon">📭</span>Email yourself the Smartsheet report every time</li>
+          <li><span class="icon">🧹</span>Manually clean whitespace and empty fields</li>
+          <li><span class="icon">🔍</span>Search inbox by full subject line for every quote</li>
+          <li><span class="icon">📋</span>Manually assemble a price table — one typo ruins it</li>
+          <li><span class="icon">🕐</span>Double-check everything by hand</li>
+          <li><span class="icon">🖼️</span>Paste a screenshot image to the customer</li>
+          <li><span class="icon">🗂️</span>No central storage — quotes scattered in email threads</li>
+        </ul>
+      </div>
+
+      <div class="compare-col after">
+        <div class="compare-col-title">✓&nbsp; After</div>
+        <ul class="compare-list">
+          <li><span class="icon">⚡</span>Unique code triggers automated filing to SharePoint</li>
+          <li><span class="icon">📂</span>Quotes saved automatically under the right customer folder</li>
+          <li><span class="icon">🔑</span>One search by code — folder found instantly</li>
+          <li><span class="icon">📤</span>Drag PDFs into app — data extracted automatically</li>
+          <li><span class="icon">✏️</span>Sanity-check the editable live table; adjust tax or qty</li>
+          <li><span class="icon">📊</span>Download a formatted, formula-driven Excel in seconds</li>
+          <li><span class="icon">🗃️</span>All requests organized by customer in SharePoint — forever</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SLIDE 5 — Impact ───────────────────────────────────────── -->
+  <section class="slide" id="s5">
+    <div class="eyebrow">Business Impact</div>
+    <h2>What Changed</h2>
+    <div class="rule" style="margin: 20px auto 8px;"></div>
+    <p class="sub" style="margin: 0 auto;">Measurable improvements in speed, accuracy, and professionalism across every quote request.</p>
+    <div class="metrics">
+
+      <div class="metric-card">
+        <div class="metric-num">90<span style="font-size:32px;">%</span></div>
+        <div class="metric-label">Reduction in manual steps per request</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-num">~0</div>
+        <div class="metric-label">Copy-paste errors in the final output</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-num">100<span style="font-size:32px;">%</span></div>
+        <div class="metric-label">Consistent, professional Excel format every time</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-num">✓</div>
+        <div class="metric-label">Auto winner detection — lowest price highlighted instantly</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-num">✓</div>
+        <div class="metric-label">Centralized SharePoint storage by customer &amp; request</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-num">✓</div>
+        <div class="metric-label">Scalable — same process works for any customer or supplier count</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SLIDE 6 — App Features ─────────────────────────────────── -->
+  <section class="slide" id="s6">
+    <div class="eyebrow">The Tool</div>
+    <h2>App Highlights</h2>
+    <div class="feature-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">📄</div>
+        <h3>PDF → Data Automatically</h3>
+        <p>Upload supplier quote PDFs. Power Automate extracts all line items and loads them into a review table — no re-typing.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">✏️</div>
+        <h3>Live Editable Table</h3>
+        <p>Review, add, or remove rows directly in the app. Adjust quantities, descriptions, or supplier entries on the fly.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">💲</div>
+        <h3>Configurable Tax</h3>
+        <p>Set the tax percentage once (default 12%). All totals — including the final Excel — update instantly.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">👀</div>
+        <h3>HTML Preview</h3>
+        <p>See the full price comparison table — organized by product code and supplier — before generating the file.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🏆</div>
+        <h3>Auto Winner Detection</h3>
+        <p>The lowest-priced supplier per item is automatically highlighted in green in the final Excel. No manual comparison needed.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📥</div>
+        <h3>Professional Excel Output</h3>
+        <p>Generates a formatted, formula-driven Excel with merged cells, color-coded headers, and dynamic price calculations.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SLIDE 7 — Thank You ────────────────────────────────────── -->
+  <section class="slide" id="s7">
+    <div class="eyebrow" style="color: rgba(255,255,255,.4);">Thank You</div>
+    <h2>Questions?</h2>
+    <div class="rule"></div>
+    <p class="sub">This tool was built in-house to solve a real, recurring pain point — and it's already saving hours per week while improving the quality and consistency of every customer-facing quote.</p>
+    <div class="tag-pill">Built with <span>Streamlit · Power Automate · SharePoint</span></div>
+  </section>
+
+</div><!-- /deck -->
+
+<!-- ─── Navigation ────────────────────────────────────────────────── -->
+<nav class="nav">
+  <button class="nav-btn" id="prevBtn" onclick="navigate(-1)" disabled>‹</button>
+  <div class="progress-dots" id="dots"></div>
+  <button class="nav-btn" id="nextBtn" onclick="navigate(1)">›</button>
+</nav>
+
+<div class="hint">← → to navigate</div>
+
+<!-- ─── Script ────────────────────────────────────────────────────── -->
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total  = slides.length;
+  let current  = 0;
+
+  // Build dots
+  const dotsEl = document.getElementById('dots');
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.setAttribute('role', 'button');
+    d.setAttribute('tabindex', '0');
+    d.addEventListener('click', () => goTo(i));
+    d.addEventListener('keydown', e => { if (e.key === 'Enter') goTo(i); });
+    dotsEl.appendChild(d);
+  });
+
+  function updateUI() {
+    // slide number
+    document.getElementById('slideNum').textContent = `${current + 1} / ${total}`;
+    // dots
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    // buttons
+    document.getElementById('prevBtn').disabled = current === 0;
+    document.getElementById('nextBtn').disabled = current === total - 1;
+    // dark slide tweaks
+    const isDark = slides[current].id === 's7';
+    document.querySelector('.hint').style.color = isDark ? 'rgba(255,255,255,.15)' : 'var(--border)';
+    document.querySelector('.brand-name').style.color = isDark ? 'rgba(255,255,255,.35)' : 'var(--muted)';
+  }
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= total || idx === current) return;
+
+    const from = slides[current];
+    const to   = slides[idx];
+
+    // Exit current
+    from.classList.remove('active');
+    from.classList.add('exit-up');
+    setTimeout(() => from.classList.remove('exit-up'), 400);
+
+    // Enter next
+    to.style.transform = idx > current ? 'translateY(32px)' : 'translateY(-32px)';
+    to.style.opacity = '0';
+    requestAnimationFrame(() => {
+      to.style.transition = 'none';
+      requestAnimationFrame(() => {
+        to.style.transition = '';
+        to.classList.add('active');
+        to.style.transform = '';
+        to.style.opacity   = '';
+      });
+    });
+
+    current = idx;
+    updateUI();
+  }
+
+  function navigate(dir) { goTo(current + dir); }
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') navigate(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp'   || e.key === 'PageUp')   navigate(-1);
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End')  goTo(total - 1);
+  });
+
+  // Touch swipe
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) navigate(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  updateUI();
+</script>
+</body>
+</html>
